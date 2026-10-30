@@ -113,6 +113,13 @@ export class EnvironmentVariables {
   @MinLength(SECRET_MIN_LENGTH, secret)
   ADMIN_JWT_SECRET: string;
 
+  // Rule A5 grace: a rotated refresh token retried within this many seconds, whose replacement
+  // was never used, is treated as a lost response rather than theft. 0 disables the grace.
+  @Transform(toNumber)
+  @Min(0, { message: '$property must be 0 or more seconds' })
+  @IsInt({ message: '$property must be an integer' })
+  REFRESH_REUSE_GRACE_SECONDS: number = 60;
+
   @Matches(DURATION_PATTERN, duration)
   ADMIN_JWT_TTL: string = '8h';
 

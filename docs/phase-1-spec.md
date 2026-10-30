@@ -47,6 +47,7 @@ JWT_ACCESS_TTL=15m
 JWT_REFRESH_TTL=30d
 ADMIN_JWT_SECRET=
 ADMIN_JWT_TTL=8h
+REFRESH_REUSE_GRACE_SECONDS=60   # rule A5 grace window
 
 ID_HASH_PEPPER=            # long random secret; never change after launch
 
@@ -218,6 +219,13 @@ banned again after being lifted).
 - **A3** Max 3 OTP requests per phone per 10 minutes.
 - **A4** Requesting a new code invalidates older unconsumed codes for that phone.
 - **A5** Refresh token reuse (a revoked token used again) revokes **all** of that user's tokens.
+  **Grace for lost responses:** Ethiopian mobile networks often drop the response after the server
+  has rotated the token, and the app then retries with the old one. If a rotated token is reused
+  within `REFRESH_REUSE_GRACE_SECONDS` (default 60) of its first rotation **and** its replacement
+  has never been used (not rotated, not revoked), the unused replacement is revoked and a new pair
+  is issued; both the old token and the revoked replacement then point (`replaced_by_id`) at the
+  new one. Any other reuse — after the window, after the replacement was used, or of a token
+  revoked by logout — is full A5. Logout with an already-revoked token is a no-op.
 - **A6** `suspended` and `banned` users cannot log in or refresh; return a neutral error.
 - **A7** In development, `SMS_PROVIDER=console` logs the code instead of sending it.
 - **A8** Per-IP throttling on `POST /auth/otp/request` (default 30 requests per IP per hour,
@@ -427,7 +435,9 @@ token when loading the page, so the page is protected separately, e.g. HTTP Basi
 Screens: phone entry → OTP → home showing verification status → "Verify my identity" (opens the
 Didit flow) → result screen (approved / declined with a retry option / pending / manual review /
 neutral "contact support" for blocked). Language picker uses `PATCH /me`. Tokens stored in secure
-storage; access token refreshed automatically.
+storage; access token refreshed automatically. **Refreshes must be queued:** never send two
+`POST /auth/refresh` calls at once with the same refresh token; concurrent callers wait for the one
+in flight and use its result. (The A5 grace window covers a lost response, not parallel refreshes.)
 
 ---
 

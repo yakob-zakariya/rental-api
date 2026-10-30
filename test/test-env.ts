@@ -17,6 +17,7 @@ export const TEST_ENV = {
   JWT_REFRESH_TTL: '30d',
   ADMIN_JWT_SECRET: 'test-admin-jwt-secret-0123456789abcdef',
   ADMIN_JWT_TTL: '8h',
+  REFRESH_REUSE_GRACE_SECONDS: '60',
 
   ID_HASH_PEPPER: 'test-id-hash-pepper-0123456789abcdef',
 
