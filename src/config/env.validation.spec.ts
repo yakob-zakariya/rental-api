@@ -39,6 +39,7 @@ describe('validateEnv', () => {
     expect(env.JWT_REFRESH_TTL).toBe('30d');
     expect(env.ADMIN_JWT_TTL).toBe('8h');
     expect(env.OTP_TTL_SECONDS).toBe(300);
+    expect(env.OTP_REQUEST_IP_LIMIT_PER_HOUR).toBe(30);
     expect(env.SMS_PROVIDER).toBe(SmsProvider.Console);
     expect(env.DIDIT_BASE_URL).toBe('https://verification.didit.me');
   });
@@ -89,6 +90,8 @@ describe('validateEnv', () => {
     ['JWT_ACCESS_TTL', '15 minutes', 'must be a duration'],
     ['ADMIN_JWT_TTL', '8', 'must be a duration'],
     ['OTP_TTL_SECONDS', '0', 'must be a positive number of seconds'],
+    ['OTP_REQUEST_IP_LIMIT_PER_HOUR', '0', 'must be at least 1'],
+    ['OTP_REQUEST_IP_LIMIT_PER_HOUR', 'many', 'must be an integer'],
     ['SMS_PROVIDER', 'twilio', 'must be one of console'],
     [
       'DIDIT_BASE_URL',

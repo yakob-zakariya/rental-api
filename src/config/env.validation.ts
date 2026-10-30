@@ -128,6 +128,12 @@ export class EnvironmentVariables {
   @IsInt({ message: '$property must be an integer' })
   OTP_TTL_SECONDS: number = 300;
 
+  // Rule A8: per-IP limit on POST /auth/otp/request. Loose on purpose (shared mobile IPs).
+  @Transform(toNumber)
+  @Min(1, { message: '$property must be at least 1' })
+  @IsInt({ message: '$property must be an integer' })
+  OTP_REQUEST_IP_LIMIT_PER_HOUR: number = 30;
+
   @IsDefined(required)
   @IsString()
   @MinLength(SECRET_MIN_LENGTH, secret)

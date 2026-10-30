@@ -1,14 +1,19 @@
 import { INestApplication } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+import { Test, TestingModuleBuilder } from '@nestjs/testing';
 import type { App } from 'supertest/types.js';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../../src/app.module.js';
 
-/** The full app as main.ts builds it (minus Swagger and listen). Close it in afterAll. */
-export async function createTestApp(): Promise<INestApplication<App>> {
-  const moduleRef = await Test.createTestingModule({
-    imports: [AppModule],
-  }).compile();
+/**
+ * The full app as main.ts builds it (minus Swagger and listen). Close it in afterAll.
+ * `configure` can swap providers, e.g. `(b) => b.overrideProvider(SmsSender).useValue(fake)`.
+ */
+export async function createTestApp(
+  configure: (builder: TestingModuleBuilder) => TestingModuleBuilder = (b) => b,
+): Promise<INestApplication<App>> {
+  const moduleRef = await configure(
+    Test.createTestingModule({ imports: [AppModule] }),
+  ).compile();
   const app = moduleRef.createNestApplication<INestApplication<App>>({
     logger: ['error', 'warn'],
   });

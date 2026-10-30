@@ -51,6 +51,7 @@ ADMIN_JWT_TTL=8h
 ID_HASH_PEPPER=            # long random secret; never change after launch
 
 OTP_TTL_SECONDS=300
+OTP_REQUEST_IP_LIMIT_PER_HOUR=30   # rule A8
 OTP_HASH_SECRET=           # long random secret for HMAC of OTP codes
 SMS_PROVIDER=console       # 'console' logs codes in development
 

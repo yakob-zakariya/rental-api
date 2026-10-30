@@ -21,6 +21,8 @@ export const TEST_ENV = {
   ID_HASH_PEPPER: 'test-id-hash-pepper-0123456789abcdef',
 
   OTP_TTL_SECONDS: '300',
+  // High so e2e files sharing one app don't trip it; the A8 test lowers it for its own app.
+  OTP_REQUEST_IP_LIMIT_PER_HOUR: '1000',
   OTP_HASH_SECRET: 'test-otp-hash-secret-0123456789abcdef',
   SMS_PROVIDER: 'console',
 
