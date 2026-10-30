@@ -55,11 +55,10 @@ docs/
 
 ## Commands
 
-Keep these accurate. The `docker compose` and `migration:*` commands don't exist yet (added in
-T0.2 and T0.4).
+Keep these accurate. The `migration:*` commands don't exist yet (added in T0.4).
 
 ```
-docker compose up -d          # start Postgres + Redis
+docker compose up -d --wait   # start Postgres + Redis (waits until healthy)
 npm run start:dev             # run the API
 npm run test                  # unit tests (Vitest)
 npm run test:e2e              # end-to-end tests (Vitest)

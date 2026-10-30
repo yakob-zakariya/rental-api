@@ -31,6 +31,22 @@
 $ npm install
 ```
 
+## Local infrastructure
+
+Postgres (with PostGIS) and Redis run in Docker; the API runs on the host. Both bind to
+`127.0.0.1` only and keep their data in named volumes (`pg_data`, `redis_data`).
+
+```bash
+# start Postgres + Redis (waits until both are healthy)
+$ docker compose up -d --wait
+
+# stop (data is kept)
+$ docker compose down
+
+# stop and wipe all local data
+$ docker compose down -v
+```
+
 ## Compile and run the project
 
 ```bash
