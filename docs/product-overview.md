@@ -213,5 +213,7 @@ Things that are fine for local development but must be settled before (or when) 
   extension allow-list).
 - **Choose and integrate a real SMS provider before deploying with NODE_ENV=production.** The app
   refuses to start in production with `SMS_PROVIDER=console`, which logs OTP codes.
+- **Verification start holds a DB connection during the Didit call (up to 10 s); review pool size and
+  consider moving the Didit call outside the transaction before traffic grows.**
 - **Swagger in production.** Off unless `SWAGGER_ENABLED=true`; if enabled, the `/docs` page must
   be behind staff auth first (T3.1).

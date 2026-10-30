@@ -263,7 +263,11 @@ banned again after being lifted).
      `Not Started`, `In Progress`, `Resubmitted` or `Awaiting User`, "create" returns that same
      session. If the returned `session_id` is one of our attempts, it is a **resume** (V2, V14):
      refresh that attempt's `verification_url` and `session_token`, create no new row, and don't
-     count it toward V3.
+     count it toward V3. An attempt that is `abandoned` or `expired` locally is reopened as
+     `pending` (Didit says it is still live; its sessions currently last 7 days, longer than V16's
+     24 hours). If the attempt is `approved`, `declined`, `blocked` or `manual_review` locally,
+     log it, flag it for staff (`flag_reason = PROVIDER_SESSION_STATE_CONFLICT`, unless it is
+     already flagged) and return 503 `VERIFICATION_PROVIDER_UNAVAILABLE`.
    - Save an `identity_verifications` row (`outcome = pending`, with `verification_url` and
      `session_token`), then `recomputeVerificationStatus(userId)`.
    - Return `{ verificationUrl, sessionToken }` to the app.
@@ -351,11 +355,15 @@ approve/decline, unban). It derives the status from the attempt history:
   returns a `session_id` we already have (Didit reuses an unfinished session for the same
   `vendor_data`), refresh that attempt's `verification_url` and `session_token` and treat it as a
   resume — no new attempt, not counted toward V3.
+  At the V3 limit, a `pending` attempt of **any age** is resumed from its stored `verification_url`
+  and `session_token`, without calling Didit (a call could create a 4th session).
 - **V3 — Retry limit:** max **3 created sessions per rolling 24 hours**. Every created session
   counts, including ones that ended `abandoned` or `expired`. The 4th returns
   `{ code: 'VERIFICATION_RETRY_LIMIT', manualReviewAvailable }`, where `manualReviewAvailable` is
   true when the most recent attempt was declined by Didit. Staff decisions are not attempts and
-  don't count.
+  don't count. The 429 also carries `retryAfterSeconds` (and a `Retry-After` header): seconds
+  until the oldest counted attempt leaves the 24-hour window. The limit applies only when the
+  user has no `pending` attempt to resume (see V2).
 - **V4 — Age:** under 18 on the decision date → `declined`, reason `UNDERAGE`. (T2.1/T2.9 confirm
   whether Didit returns a Fayda date of birth in the Gregorian or Ethiopian calendar; convert if needed.)
 - **V5 — Banned identity:** **any** of the attempt's `identity_hashes` matches an active
@@ -403,7 +411,8 @@ approve/decline, unban). It derives the status from the attempt history:
 - **V14 — Superseding:** creating a new session marks any older `pending` attempt of the same
   user `abandoned` locally (and stops polling it). If a final Didit decision arrives for it later,
   it is still processed. Exception: when Didit returns a session we already have (see V2), that
-  attempt is resumed, not superseded — it isn't marked `abandoned`.
+  attempt is resumed, not superseded — it isn't marked `abandoned` (and is reopened as `pending`
+  if it was `abandoned` or `expired`).
 - **V15 — Transitions after a final outcome:**
   - **Staff decisions are final.** If `decided_by_admin_id` is set, later Didit events only update
     `provider_status`.
@@ -418,7 +427,9 @@ approve/decline, unban). It derives the status from the attempt history:
     clear `users.verified_at`, keep `full_name` and `date_of_birth` as history, recompute, and
     flag the attempt for staff (`flag_reason = APPROVAL_REVERSED`).
 - **V16 — Polling expiry:** an attempt still `pending` 24 hours after creation is marked
-  `expired`, its URL/token are cleared, and it is no longer polled.
+  `expired`, its URL/token are cleared, and it is no longer polled. If Didit later returns that
+  same session on a new start (it is still unfinished there), the attempt is reopened as
+  `pending` (flow step 1).
 
 ---
 
