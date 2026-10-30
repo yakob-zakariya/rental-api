@@ -37,7 +37,9 @@ Tick each box when it's merged and you've understood the code.
       `09…`, `9…`, `+2519…`, `2519…`, `07…`, and invalid input.
 - [ ] **T1.3 SMS interface.** `SmsSender` interface + `ConsoleSmsSender`.
 - [ ] **T1.4 OTP request + verify.** `otp_codes` entity and migration; rules A1–A4, A7–A9 (per-IP
-      throttling, HMAC with `OTP_HASH_SECRET`); tests.
+      throttling, HMAC with `OTP_HASH_SECRET`); tests. Add `OTP_REQUEST_IP_LIMIT_PER_HOUR`
+      (default 30) to config for A8. The per-phone limit (A3) must be counted from the `otp_codes`
+      table, **not** the in-memory throttler, so it survives restarts.
 - [ ] **T1.5 JWT tokens.** Access + refresh, `refresh_tokens` table, rotation, logout, rules A5–A6; tests.
 - [ ] **T1.6 Guards + `/me`.** Global `JwtAuthGuard` + `ActiveAccountGuard` with a `@Public()`
       opt-out, `VerifiedGuard`, `@CurrentUser()` decorator, `GET /me`, `PATCH /me`

@@ -43,6 +43,7 @@ src/
     data-source.ts   # the ONE TypeORM DataSource for the migration CLI
     data-source.options.ts  # its options, also used by the app's DatabaseModule
     migrations/
+  redis/             # the shared ioredis client (inject with @Inject(REDIS))
   common/            # guards, decorators, filters, interceptors, utils
   modules/
     health/
