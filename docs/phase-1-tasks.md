@@ -48,33 +48,40 @@ Tick each box when it's merged and you've understood the code.
 ## Step 2 — Identity verification
 
 - [ ] **T2.1 Read Didit's docs and write the client.** `DiditClient` interface + real
-      implementation (create session, get decision) + `FakeDiditClient` for tests. Confirm status
-      strings, decision field names, the webhook signature scheme and the base URL from the docs;
-      note them in the code. Configure the Didit workflow to accept only national ID (Fayda) and
-      passport. Also find out: which Fayda numbers Didit returns (FIN, FAN, both), how document
-      types map to our `kind` enum, which field holds a passport's issuing country (and its
-      format — convert to ISO 3166-1 alpha-3 if needed), whether a Fayda date of birth comes back in the Gregorian or
-      Ethiopian calendar, and whether Didit accepts the printed paper credential and the digital
-      Fayda, not only the physical card.
+      implementation (create session, get decision) + `FakeDiditClient` for tests (including
+      Didit's "returns the existing unfinished session" behaviour). Findings, status strings,
+      decision field names, the webhook signature recipe and the console configuration are recorded
+      in `docs/didit-integration.md`. The client sends `expected_document_types = ["ID", "P"]`,
+      treats 401/403 as "check `DIDIT_API_KEY`", and drops image URLs and unneeded fields before
+      anything else sees a decision (hard rule 1). Done in the console (sandbox app): workflow
+      "Free KYC" accepts Ethiopian `ID_CARD_GENERIC` + passports, passports only elsewhere.
+      Fayda specifics (subtype, FIN/FAN, DOB calendar, paper/digital) move to T2.9.
 - [ ] **T2.2 Entities + migration.** `identity_verifications`, `identity_hashes` (with the partial
       unique index), `verification_webhook_events`, `banned_identities`.
 - [ ] **T2.3 ID hashing utility.** Normalise + `kind:`-prefixed HMAC, with the issuing
       country for passports (V10); tests.
 - [ ] **T2.4 Start a session.** `POST /verification/sessions` with V1–V3, V13, V14 (resume,
       superseding); `recomputeVerificationStatus` with tests for every branch.
-- [ ] **T2.5 Webhook endpoint.** Signature check, timestamp freshness, idempotency (V11);
-      re-processing an event whose `processed_at` is null; tests with self-signed payloads,
-      including a forged one.
-- [ ] **T2.6 Decision processing.** Status mapping + V4–V8, V12, V15, shared by webhook and polling;
-      row locking (`SELECT … FOR UPDATE`), storing `identity_hashes`; tests for
-      every rule, including a race on the unique index.
+- [ ] **T2.5 Webhook endpoint.** Signature check (`X-Signature-V2` + `-Previous` during secret
+      rotation), timestamp freshness (±300 s), environment check (new `DIDIT_ENVIRONMENT`, default
+      `sandbox` outside production; events from the other environment rejected), idempotency on
+      Didit's `event_id` (V11); re-processing an event whose `processed_at` is null; tests with
+      self-signed payloads, including a forged one and a wrong-environment one. Create the Didit
+      webhook destination once the tunnel URL is known (its secret goes into `DIDIT_WEBHOOK_SECRET`).
+- [ ] **T2.6 Decision processing.** Status mapping (including `Kyc Expired`, `Resubmitted`,
+      `Awaiting User`) + V4–V8, V12, V15, shared by webhook and polling; row locking
+      (`SELECT … FOR UPDATE`), storing `identity_hashes`; `data.updated` re-fetches the decision and
+      flags the attempt (`DATA_UPDATED`) without touching `full_name` / `date_of_birth` (V9).
+      Fayda numbers: 12 digits → `fayda_fin`, 16 → `fayda_fan` as a starting point; anything else →
+      V8 `manual_review`, never guessed. Tests for every rule, including a race on the unique index.
 - [ ] **T2.7 Polling job.** Scheduled check for stuck sessions, 24-hour expiry (V16); tests.
 - [ ] **T2.8 Status + manual review request.** `GET /verification/status`,
       `POST /verification/manual-review-request`; tests.
-- [ ] **T2.9 Real-world check.** Tunnel + Didit sandbox + your own ID (spec section 8). Note any
-      Fayda form that fails (card, paper credential, digital), which identifiers Didit returned,
-      and the Fayda DOB calendar; confirm other documents are rejected; update V4/V10 and the
-      `kind` enum if needed.
+- [ ] **T2.9 Real-world check.** Tunnel + Didit sandbox + your own ID (spec section 8). Answer the
+      open questions in `docs/didit-integration.md`: is the physical Fayda card classified as
+      `ID_CARD_GENERIC`; which Fayda numbers come back (FIN, FAN, both), in which field and with
+      what lengths; the DOB calendar; whether the paper credential or digital Fayda is accepted.
+      Confirm other documents are rejected; update V4/V10, the FIN/FAN rule and the `kind` enum if needed.
 
 ## Step 3 — Staff side
 
