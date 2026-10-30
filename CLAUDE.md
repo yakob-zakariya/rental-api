@@ -40,7 +40,8 @@ src/
   app.module.ts
   config/            # env loading + validation (app must refuse to start on missing/invalid env)
   database/
-    data-source.ts   # the ONE TypeORM DataSource, shared by the app and the migration CLI
+    data-source.ts   # the ONE TypeORM DataSource for the migration CLI
+    data-source.options.ts  # its options, also used by the app's DatabaseModule
     migrations/
   common/            # guards, decorators, filters, interceptors, utils
   modules/
@@ -55,7 +56,9 @@ docs/
 
 ## Commands
 
-Keep these accurate. The `migration:*` commands don't exist yet (added in T0.4).
+Keep these accurate. The `migration:*` commands build first and run the TypeORM CLI against the
+compiled `dist/database/data-source.js` (ts-node/tsx are unreliable under ESM and lose decorator
+metadata). The app needs Postgres up to start.
 
 ```
 docker compose up -d --wait   # start Postgres + Redis (waits until healthy)
@@ -64,9 +67,11 @@ npm run test                  # unit tests (Vitest)
 npm run test:e2e              # end-to-end tests (Vitest)
 npm run lint                  # oxlint
 npm run format                # Prettier
-npm run migration:generate -- src/database/migrations/<Name>
+npm run migration:generate -- src/database/migrations/<Name>   # from entity changes
+npm run migration:create -- src/database/migrations/<Name>     # empty, for hand-written SQL
 npm run migration:run
 npm run migration:revert
+npm run migration:show
 ```
 
 ## Hard rules — never break these
