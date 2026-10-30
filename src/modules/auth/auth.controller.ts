@@ -1,5 +1,6 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { ApiNoContentResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { Public } from '../../common/decorators/public.decorator.js';
 import { OtpRequestIpLimit } from '../../common/throttling.js';
 import { UserStatus } from '../users/user.enums.js';
 import { RefreshTokenDto } from './dto/refresh-token.dto.js';
@@ -10,6 +11,8 @@ import { OtpService } from './otp.service.js';
 import { accountUnavailable, TokenService } from './token.service.js';
 
 @ApiTags('auth')
+// Sign-in and token endpoints work without an access token.
+@Public()
 @Controller('auth')
 export class AuthController {
   constructor(
