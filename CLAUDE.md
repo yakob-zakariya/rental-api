@@ -51,7 +51,7 @@ src/
     users/
     verification/    # Didit client, webhook, state machine, background jobs
     admin/           # staff auth, roles, manual review, bans, audit log
-test/
+test/               # e2e specs; global-setup.ts recreates + migrates rental_test each run
 docs/
 ```
 
@@ -65,7 +65,7 @@ metadata). The app needs Postgres up to start.
 docker compose up -d --wait   # start Postgres + Redis (waits until healthy)
 npm run start:dev             # run the API
 npm run test                  # unit tests (Vitest)
-npm run test:e2e              # end-to-end tests (Vitest)
+npm run test:e2e              # end-to-end tests (Vitest; needs Docker up, uses rental_test + Redis db 1)
 npm run lint                  # oxlint
 npm run format                # Prettier
 npm run migration:generate -- src/database/migrations/<Name>   # from entity changes
