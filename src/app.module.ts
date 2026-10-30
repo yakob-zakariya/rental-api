@@ -16,6 +16,7 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { SmsModule } from './modules/sms/sms.module.js';
 import { UsersModule } from './modules/users/users.module.js';
+import { VerificationModule } from './modules/verification/verification.module.js';
 import { RedisModule } from './redis/redis.module.js';
 
 @Module({
@@ -42,6 +43,7 @@ import { RedisModule } from './redis/redis.module.js';
     UsersModule,
     SmsModule,
     AuthModule,
+    VerificationModule,
   ],
   providers: [
     { provide: APP_PIPE, useFactory: createValidationPipe },
