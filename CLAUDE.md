@@ -49,6 +49,7 @@ src/
     health/
     auth/            # phone OTP, JWT access/refresh tokens
     users/
+    sms/             # SmsSender interface + ConsoleSmsSender (selected by SMS_PROVIDER)
     verification/    # Didit client, webhook, state machine, background jobs
     admin/           # staff auth, roles, manual review, bans, audit log
 test/               # e2e specs; global-setup.ts recreates + migrates rental_test each run

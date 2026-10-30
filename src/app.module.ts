@@ -7,6 +7,7 @@ import { createValidationPipe } from './common/validation.js';
 import { validateEnv } from './config/env.validation.js';
 import { DatabaseModule } from './database/database.module.js';
 import { HealthModule } from './modules/health/health.module.js';
+import { SmsModule } from './modules/sms/sms.module.js';
 import { UsersModule } from './modules/users/users.module.js';
 import { RedisModule } from './redis/redis.module.js';
 
@@ -25,6 +26,7 @@ import { RedisModule } from './redis/redis.module.js';
     RedisModule,
     HealthModule,
     UsersModule,
+    SmsModule,
   ],
   providers: [
     { provide: APP_PIPE, useFactory: createValidationPipe },

@@ -219,6 +219,12 @@ export function validateEnv(
         problems.push(`${key} still has a placeholder value from .env.example`);
       }
     }
+    // The console sender writes OTP codes to the logs: anyone reading them could sign in as anyone.
+    if (env.SMS_PROVIDER === SmsProvider.Console) {
+      problems.push(
+        "SMS_PROVIDER=console logs OTP codes and can't be used in production",
+      );
+    }
   }
 
   if (problems.length > 0) {

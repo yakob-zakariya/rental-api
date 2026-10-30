@@ -211,5 +211,7 @@ Things that are fine for local development but must be settled before (or when) 
 - **Postgres extensions need privileges.** The first migration runs `CREATE EXTENSION postgis`
   and `pgcrypto`, which needs superuser or the host's equivalent (e.g. a managed provider's
   extension allow-list).
+- **Choose and integrate a real SMS provider before deploying with NODE_ENV=production.** The app
+  refuses to start in production with `SMS_PROVIDER=console`, which logs OTP codes.
 - **Swagger in production.** Off unless `SWAGGER_ENABLED=true`; if enabled, the `/docs` page must
   be behind staff auth first (T3.1).
