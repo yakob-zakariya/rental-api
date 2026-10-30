@@ -4,6 +4,7 @@ import { BannedIdentity } from './entities/banned-identity.entity.js';
 import { IdentityHash } from './entities/identity-hash.entity.js';
 import { IdentityVerification } from './entities/identity-verification.entity.js';
 import { VerificationWebhookEvent } from './entities/verification-webhook-event.entity.js';
+import { IdentityHasher } from './identity-hasher.js';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { VerificationWebhookEvent } from './entities/verification-webhook-event.
       BannedIdentity,
     ]),
   ],
-  exports: [TypeOrmModule],
+  providers: [IdentityHasher],
+  exports: [TypeOrmModule, IdentityHasher],
 })
 export class VerificationModule {}
