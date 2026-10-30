@@ -66,12 +66,18 @@ $ npm run start:prod
 # unit tests
 $ npm run test
 
-# e2e tests
+# e2e tests (needs `docker compose up -d --wait`)
 $ npm run test:e2e
 
 # test coverage
 $ npm run test:cov
 ```
+
+Unit tests live next to the code (`src/**/*.spec.ts`) and need nothing running. E2e tests
+(`test/**/*.e2e-spec.ts`) boot the whole app against a separate database, `rental_test`, which is
+dropped, recreated and migrated at the start of every run, and Redis database 1, which is flushed.
+They use the dummy values in `test/test-env.ts` and ignore your `.env`, so development data is
+never touched.
 
 ## Deployment
 
