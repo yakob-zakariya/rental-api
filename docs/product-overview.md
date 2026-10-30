@@ -82,9 +82,13 @@ Three separate layers:
 
 ## 5. Identity verification (Phase 1 — see spec)
 
-- Provider: **Didit**. Self-serve, no government relying-party process needed. Supports Fayda,
-  kebele ID, Ethiopian passport, driving licence. 500 free checks/month per feature; ~USD 0.33
-  per full KYC afterwards (paid by virtual dollar card once past the free tier).
+- Provider: **Didit**. Self-serve, no government relying-party process needed. 500 free
+  checks/month per feature; ~USD 0.33 per full KYC afterwards (paid by virtual dollar card once
+  past the free tier).
+- **Accepted documents:** the **Fayda** national ID is the primary document. **Passports**
+  (Ethiopian or foreign) are the single alternative, for diaspora and foreigners. Kebele IDs and
+  driving licences are **not** accepted: kebele numbers aren't nationally unique and the formats
+  vary too much to anchor a ban or a duplicate check on.
 - **Lazy verification:** nobody verifies at sign-up. Landlords verify before a listing goes live;
   tenants verify before their first contact request.
 - The provider answers "is this a real person?"; **our system** answers "is this person allowed

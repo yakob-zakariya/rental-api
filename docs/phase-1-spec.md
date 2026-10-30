@@ -3,23 +3,32 @@
 **Goal:** a user can sign up with their phone, verify their identity with an Ethiopian ID and a
 selfie, and see "Approved" in the app. Staff can handle manual reviews and bans.
 
-**Done when:** you sign up with your own phone, verify with your own Fayda card or kebele ID,
+**Done when:** you sign up with your own phone, verify with your own Fayda ID (or a passport),
 and your account shows `approved` — and every business rule below has a passing test.
 
+**Accepted documents:** the **Fayda** national ID (primary) and **passports** (Ethiopian or
+foreign — for diaspora and foreigners). Nothing else: no kebele IDs, no driving licences. The
+Didit workflow (`DIDIT_WORKFLOW_ID`) must be configured to accept only national ID and passport.
+
 **Out of scope:** listings, properties, contact requests, search, maps, photos, notifications/push,
-payments, chat, Telegram, public web pages, a web admin panel, a real SMS provider.
+payments, chat, Telegram, public web pages, a web admin panel, a real SMS provider, setting
+`users.status = suspended` (comes with moderation later), moving an account to a new SIM.
 
 ---
 
 ## 1. Foundation
 
-- NestJS app, TypeScript strict mode.
+- NestJS 12 app, TypeScript strict mode, **ESM** (`"type": "module"`). Tests use **Vitest**, linting
+  uses **oxlint**, formatting uses Prettier. (The scaffold already exists; keep it.)
 - Docker Compose: `postgis/postgis` image (Postgres + PostGIS) and Redis.
 - TypeORM with a single `src/database/data-source.ts` used by both the app and the migration CLI.
   `synchronize: false`. First migration enables the `postgis` and `pgcrypto` extensions.
+  **Prove first that the TypeORM migration CLI works under ESM**; if it doesn't, stop and decide
+  whether to switch the project to CommonJS.
 - Config module with validation: the app refuses to start if a required env variable is missing.
 - Global `ValidationPipe` (`whitelist`, `forbidNonWhitelisted`, `transform`).
-- Swagger at `/docs` (disabled in production unless explicitly enabled).
+- Swagger at `/docs`. Disabled in production unless `SWAGGER_ENABLED=true`, and in production it is
+  only served behind admin auth (see section 5).
 - Rate limiting with `@nestjs/throttler`.
 - `GET /health` — checks database and Redis.
 
@@ -30,6 +39,7 @@ NODE_ENV=development
 PORT=3000
 DATABASE_URL=postgres://rental:rental@localhost:5432/rental
 REDIS_URL=redis://localhost:6379
+SWAGGER_ENABLED=false      # only read in production; always on in development
 
 JWT_ACCESS_SECRET=
 JWT_REFRESH_SECRET=
@@ -41,12 +51,13 @@ ADMIN_JWT_TTL=8h
 ID_HASH_PEPPER=            # long random secret; never change after launch
 
 OTP_TTL_SECONDS=300
+OTP_HASH_SECRET=           # long random secret for HMAC of OTP codes
 SMS_PROVIDER=console       # 'console' logs codes in development
 
 DIDIT_API_KEY=
 DIDIT_WEBHOOK_SECRET=
 DIDIT_WORKFLOW_ID=
-DIDIT_BASE_URL=https://verification.didit.me
+DIDIT_BASE_URL=https://verification.didit.me   # confirm against docs.didit.me
 APP_VERIFICATION_CALLBACK_URL=   # where Didit sends the user back after the flow
 ```
 
@@ -63,9 +74,9 @@ All IDs are UUIDs; all timestamps are `timestamptz`.
 | phone | varchar unique | E.164 |
 | full_name | varchar null | Set from verification; locked once verified |
 | date_of_birth | date null | Set from verification; locked once verified |
-| preferred_language | enum `am`,`om`,`en` | default `am` |
+| preferred_language | enum `am`,`om`,`en` | default `am`; editable via `PATCH /me` |
 | status | enum `active`,`suspended`,`banned` | default `active` |
-| verification_status | enum `not_verified`,`pending`,`approved`,`declined`,`manual_review`,`blocked` | default `not_verified` |
+| verification_status | enum `not_verified`,`pending`,`approved`,`declined`,`manual_review`,`blocked` | default `not_verified`; **derived** — only ever written by `recomputeVerificationStatus` |
 | verified_at | timestamptz null | |
 | created_at, updated_at | timestamptz | |
 
@@ -74,7 +85,7 @@ All IDs are UUIDs; all timestamps are `timestamptz`.
 | --- | --- | --- |
 | id | uuid PK | |
 | phone | varchar | E.164, indexed |
-| code_hash | varchar | Hash of the 6-digit code; never store the code |
+| code_hash | varchar | `HMAC_SHA256(OTP_HASH_SECRET, phone + ":" + code)`; never store the code |
 | expires_at | timestamptz | now + OTP_TTL |
 | attempts | int | default 0 |
 | consumed_at | timestamptz null | |
@@ -99,15 +110,39 @@ All IDs are UUIDs; all timestamps are `timestamptz`.
 | user_id | uuid FK → users | indexed |
 | provider | varchar | `didit` |
 | provider_session_id | varchar unique | |
-| provider_status | varchar | Didit's latest status, as received |
+| provider_status | varchar | Didit's latest status, as received (always recorded, even when it doesn't change the outcome) |
 | outcome | enum `pending`,`approved`,`declined`,`manual_review`,`blocked`,`abandoned`,`expired` | Our decision |
 | decline_reason | varchar null | Internal reason code |
 | document_type | varchar null | e.g. national ID, passport |
 | verified_name | varchar null | |
 | date_of_birth | date null | |
-| id_number_hash | varchar null | HMAC-SHA256 with `ID_HASH_PEPPER`; indexed |
+| verification_url | varchar null | So V2 can resume the session; cleared on a final outcome |
+| session_token | varchar null | So V2 can resume the session; cleared on a final outcome |
+| manual_review_requested_at | timestamptz null | Set when the user requests manual review on this attempt |
+| flagged_at | timestamptz null | Needs staff attention (V6, approved → declined, …) |
+| flag_reason | varchar null | Internal code, e.g. `DUPLICATE_IDENTITY`, `APPROVAL_REVERSED` |
+| decided_by_admin_id | uuid null FK → admin_users | Set when staff approve/decline; makes the outcome final |
+| decided_at | timestamptz null | |
 | completed_at | timestamptz null | |
 | created_at, updated_at | timestamptz | |
+
+"Final outcome" means anything other than `pending`.
+
+### `identity_hashes` (one row per identifier Didit returns, per attempt)
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | uuid PK | |
+| verification_id | uuid FK → identity_verifications | indexed |
+| user_id | uuid FK → users | indexed |
+| kind | enum `fayda_fin`,`fayda_fan`,`passport` | Only accepted documents (FIN/FAN usage confirmed in T2.1) |
+| hash | varchar | See V10 (passports include the issuing country); indexed |
+| is_approved | boolean | default false; mirrors whether the attempt's outcome is `approved` (kept in sync in the same transaction) — needed for the partial unique index |
+| created_at | timestamptz | |
+
+- **Partial unique index** on `hash` `WHERE is_approved`. All kinds are strong identifiers, so
+  this is the database-level guarantee behind V6: two users can never both be approved with the
+  same identifier, even under a race. A unique violation on approval is treated as a V6 duplicate.
+- Raw ID numbers are never stored, logged, or written to `admin_actions`.
 
 ### `verification_webhook_events` (idempotency + audit)
 | Column | Type | Notes |
@@ -122,16 +157,21 @@ All IDs are UUIDs; all timestamps are `timestamptz`.
 
 Store **no images and no raw ID numbers** in this table. Do not store the full raw payload.
 
-### `banned_identities`
+### `banned_identities` (one row per banned hash)
 | Column | Type | Notes |
 | --- | --- | --- |
 | id | uuid PK | |
-| id_number_hash | varchar unique | |
+| user_id | uuid FK → users | The user whose ban produced this row |
+| kind | same enum as `identity_hashes.kind` | |
+| hash | varchar | Same value as in `identity_hashes`; indexed |
 | reason | varchar | |
 | banned_by_admin_id | uuid FK → admin_users | |
 | lifted_at | timestamptz null | |
 | lifted_by_admin_id | uuid null | |
 | created_at | timestamptz | |
+
+Partial unique index on `hash` `WHERE lifted_at IS NULL` (one active ban per hash; a hash can be
+banned again after being lifted).
 
 ### `admin_users`
 | Column | Type | Notes |
@@ -152,7 +192,7 @@ Store **no images and no raw ID numbers** in this table. Do not store the full r
 | action | varchar | e.g. `verification.approve`, `user.ban` |
 | target_type | varchar | e.g. `user`, `identity_verification` |
 | target_id | uuid | |
-| details | jsonb | Reason, note — never personal documents |
+| details | jsonb | Reason, note — never personal documents or raw ID numbers |
 | created_at | timestamptz | |
 
 ---
@@ -168,6 +208,8 @@ Store **no images and no raw ID numbers** in this table. Do not store the full r
 3. `POST /auth/refresh { refreshToken }` → rotate: revoke the old token, issue a new pair.
 4. `POST /auth/logout { refreshToken }` → revoke it.
 5. `GET /me` → the current user's profile and `verification_status`.
+6. `PATCH /me { preferredLanguage }` → the only editable field in Phase 1. Any other field
+   (including `fullName`, `dateOfBirth`) is rejected by `forbidNonWhitelisted` (V9).
 
 ### Rules
 - **A1** OTP is 6 digits, valid for `OTP_TTL_SECONDS` (default 5 minutes).
@@ -177,10 +219,21 @@ Store **no images and no raw ID numbers** in this table. Do not store the full r
 - **A5** Refresh token reuse (a revoked token used again) revokes **all** of that user's tokens.
 - **A6** `suspended` and `banned` users cannot log in or refresh; return a neutral error.
 - **A7** In development, `SMS_PROVIDER=console` logs the code instead of sending it.
+- **A8** Per-IP throttling on `POST /auth/otp/request` (default 30 requests per IP per hour,
+  configurable). Kept loose because Ethiopian mobile networks put many users behind shared IPs;
+  the per-phone limit (A3) is the main protection.
+- **A9** OTP codes are stored only as `HMAC_SHA256(OTP_HASH_SECRET, phone + ":" + code)` and
+  compared in constant time.
 
 ### Guards
-- `JwtAuthGuard` — valid app-user access token.
-- `ActiveAccountGuard` — `users.status = active`.
+- `JwtAuthGuard` and `ActiveAccountGuard` are registered **globally** for all app routes.
+  A `@Public()` decorator opts a route out (e.g. `/health`, `/auth/otp/*`, `/auth/refresh`,
+  `/auth/logout`, `/webhooks/didit`).
+  - `JwtAuthGuard` — valid app-user access token (signed with `JWT_ACCESS_SECRET`).
+  - `ActiveAccountGuard` — `users.status = active`, checked against the database on every request,
+    so a ban takes effect immediately even while an access token is still valid.
+- Admin routes are not app routes: they skip the global app guards and use the admin guards
+  instead (section 5, S3).
 - `VerifiedGuard` — `users.verification_status = approved`. (No Phase 1 route needs it except a
   test route; it's built now for later phases.)
 
@@ -189,88 +242,162 @@ Store **no images and no raw ID numbers** in this table. Do not store the full r
 ## 4. Identity verification
 
 ### Flow
-1. **Start:** `POST /verification/sessions` (JwtAuth + ActiveAccount).
-   - Check eligibility (rules V1–V3).
+1. **Start:** `POST /verification/sessions`.
+   - Check eligibility, in this order: V1, V13, V2 (resume), V3.
+   - Mark any older `pending` attempt of this user as `abandoned` (V14).
    - Call Didit to create a session with our `DIDIT_WORKFLOW_ID`, passing our `user.id` as
      `vendor_data` and `APP_VERIFICATION_CALLBACK_URL` as the callback.
-   - Save an `identity_verifications` row (`outcome = pending`); set `users.verification_status = pending`.
+   - Save an `identity_verifications` row (`outcome = pending`, with `verification_url` and
+     `session_token`), then `recomputeVerificationStatus(userId)`.
    - Return `{ verificationUrl, sessionToken }` to the app.
 2. **User completes the flow** in the app (Didit SDK or hosted page): document front/back,
    then a selfie with passive liveness.
-3. **Webhook:** `POST /webhooks/didit` (public; no JWT).
+3. **Webhook:** `POST /webhooks/didit` (`@Public()`; no JWT).
    - Verify the signature exactly as Didit documents it (prefer `X-Signature-V2`). Reject invalid
-     signatures with 401. If a timestamp header is provided, reject events older than 5 minutes.
-   - Build an `event_key`; if already seen, return 200 and do nothing.
-   - Store the event row, respond 200 quickly, and process the decision (inline is fine in
-     Phase 1; move to a BullMQ job if processing grows).
-4. **Processing a decision** (shared by the webhook and the polling job):
-   - Look up the attempt by `provider_session_id`.
-   - Map Didit's status (see table below).
-   - If Didit approved, fetch or read the decision data and run our own checks (rules V4–V8).
-   - Update the attempt row and `users.verification_status`; on final approval set
-     `verified_at`, `full_name`, `date_of_birth`.
+     signatures with 401. If a timestamp header is provided, reject events older than 5 minutes
+     (acceptable because the polling job catches anything we reject).
+   - Build an `event_key`. If an event with that key exists **and `processed_at` is set**, return
+     200 and do nothing. If it exists but was never processed (e.g. an earlier error), process it again.
+   - Store/update the event row, process the decision inline (fine for Phase 1; move to a BullMQ
+     job if processing grows), set `processed_at` (or `error`), return 200.
+4. **Processing a decision** (shared by the webhook and the polling job), in one transaction:
+   - Load the attempt by `provider_session_id` with `SELECT … FOR UPDATE`, so the webhook and
+     the polling job can never process the same session at the same time.
+   - Always record `provider_status`.
+   - Apply the transition rules (V15). If the transition is allowed, map Didit's status (table
+     below); if Didit approved, read the decision data, store `identity_hashes` for every
+     identifier returned, and run our own checks (V4–V8).
+   - Update the attempt (clear `verification_url`/`session_token` on a final outcome; keep
+     `identity_hashes.is_approved` in sync), then `recomputeVerificationStatus(userId)`.
+   - When the user ends up `approved`, set `verified_at`, `full_name`, `date_of_birth` from the
+     approved attempt.
 5. **Polling fallback:** a scheduled job every 5 minutes finds attempts still `pending` for more
    than 10 minutes and fetches their decision from Didit (`GET` session decision endpoint).
-   This makes webhooks a speed-up, not a single point of failure.
-6. **Status:** `GET /verification/status` → `{ status, canRetry, retriesLeftToday, reasonCode? }`.
+   Attempts still `pending` 24 hours after creation are marked `expired` and no longer polled (V16).
+   Locally `abandoned` attempts are not polled. This makes webhooks a speed-up, not a single
+   point of failure.
+6. **Status:** `GET /verification/status` →
+   `{ status, canRetry, retriesLeftToday, canRequestManualReview, reasonCode? }`.
    `reasonCode` is user-safe (e.g. `PHOTO_UNCLEAR`, `DOCUMENT_EXPIRED`); never reveal blocking reasons.
-7. **Manual review request:** `POST /verification/manual-review-request` — allowed only after the
-   daily retry limit is reached with declines. Sets `verification_status = manual_review`.
+7. **Manual review request:** `POST /verification/manual-review-request` — allowed only when the
+   V3 limit is reached **and** the most recent attempt was declined by Didit
+   (`outcome = declined`, `provider_status` = Didit's declined status). Sets that attempt's
+   `outcome = manual_review` and `manual_review_requested_at`, then recomputes. Staff then
+   approve or decline that attempt.
 
-### Status mapping (Didit → ours)
+### Status mapping (Didit → our attempt outcome)
 
-Confirm Didit's exact status strings in their docs before coding.
+Confirm Didit's exact status strings in their docs before coding. The user's
+`verification_status` is never set from this table directly — it is always recomputed (V13).
 
-| Didit status | Our attempt outcome | User verification_status |
-| --- | --- | --- |
-| Not Started / In Progress | `pending` | `pending` |
-| In Review (Didit's own review) | `pending` | `pending` |
-| Approved | run V4–V8 → `approved` / `declined` / `blocked` / `manual_review` | same as outcome |
-| Declined | `declined` | `declined` |
-| Abandoned | `abandoned` | back to previous state (`not_verified` or `declined`) |
-| Expired | `expired` | back to previous state |
+| Didit status | Our attempt outcome |
+| --- | --- |
+| Not Started / In Progress | `pending` |
+| In Review (Didit's own review) | `pending` |
+| Approved | run V4–V8 → `approved` / `declined` / `blocked` / `manual_review` |
+| Declined | `declined` |
+| Abandoned | `abandoned` |
+| Expired | `expired` |
+
+### `recomputeVerificationStatus(userId)`
+
+The **only** code that writes `users.verification_status`. Called after every change to a user's
+attempts (session created, decision processed, polling expiry, manual-review request, staff
+approve/decline, unban). It derives the status from the attempt history:
+
+1. any attempt `blocked` → `blocked`
+2. else any attempt `approved` → `approved`
+3. else the most recent attempt whose outcome is not `abandoned`/`expired` → that outcome
+   (`pending`, `declined` or `manual_review`)
+4. else → `not_verified`
+
+`manual_review` therefore stays until staff decide on that attempt.
 
 ### Business rules
 
 - **V1 — Already approved:** an approved user cannot start a new session (`ALREADY_VERIFIED`).
-- **V2 — One at a time:** if a session is already `pending` and younger than 30 minutes, return
-  that session instead of creating a new one.
-- **V3 — Retry limit:** max **3 attempts per rolling 24 hours** (counting every created session).
-  The 4th returns `VERIFICATION_RETRY_LIMIT` and, if the last attempts were declined, offers
-  manual review.
-- **V4 — Age:** under 18 on the decision date → `declined`, reason `UNDERAGE`.
-- **V5 — Banned identity:** `id_number_hash` matches an active row in `banned_identities` →
-  attempt `blocked`, user `blocked`. The user sees a neutral message.
-- **V6 — Duplicate identity:** `id_number_hash` matches an **approved** verification belonging to
-  a **different** user → attempt `blocked`, user `blocked`, flagged for staff. (Later: staff can
-  convert this into an account move for a user who lost their SIM.)
-- **V7 — Weak duplicate signal:** same `verified_name` + `date_of_birth` as another approved user
-  but a different `id_number_hash` (e.g. Fayda then passport) → `manual_review`, not blocked.
-- **V8 — Missing data:** Didit approved but no document number or date of birth in the decision
-  → `manual_review`.
+- **V2 — One at a time / resume:** if the user has a `pending` attempt younger than 30 minutes,
+  return its stored `verification_url` and `session_token` instead of creating a new session.
+  Resuming does **not** count toward V3.
+- **V3 — Retry limit:** max **3 created sessions per rolling 24 hours**. Every created session
+  counts, including ones that ended `abandoned` or `expired`. The 4th returns
+  `{ code: 'VERIFICATION_RETRY_LIMIT', manualReviewAvailable }`, where `manualReviewAvailable` is
+  true when the most recent attempt was declined by Didit. Staff decisions are not attempts and
+  don't count.
+- **V4 — Age:** under 18 on the decision date → `declined`, reason `UNDERAGE`. (T2.1/T2.9 confirm
+  whether Didit returns a Fayda date of birth in the Gregorian or Ethiopian calendar; convert if needed.)
+- **V5 — Banned identity:** **any** of the attempt's `identity_hashes` matches an active
+  (`lifted_at IS NULL`) row in `banned_identities` → attempt `blocked`, user `blocked`. The user
+  sees a neutral message.
+- **V6 — Duplicate identity:** any of the attempt's hashes (any kind) matches an approved hash
+  (`is_approved = true`) belonging to a **different** user → attempt `blocked`, user `blocked`,
+  flagged for staff (`flag_reason = DUPLICATE_IDENTITY`).
+
+  (Later: staff can convert a V6 block into an account move for a user who lost their SIM.)
+- **V7 — Weak duplicate signal:** same normalised `verified_name` + `date_of_birth` as another
+  approved user, with no matching hash (e.g. Fayda then passport) → `manual_review`, not blocked.
+  Name normalisation: lowercase, Latin script, strip punctuation, collapse whitespace; compare the
+  full name. False positives are acceptable since this only triggers review.
+- **V8 — Missing data:** Didit approved but returned no usable identifier (no number that maps to
+  a known `kind`, e.g. an unexpected document type slipped through the workflow), no date of
+  birth, or a passport with no issuing country → `manual_review`.
 - **V9 — Locked identity:** once approved, `full_name` and `date_of_birth` cannot change via any
   user endpoint.
-- **V10 — Hashing:** `id_number_hash = HMAC_SHA256(ID_HASH_PEPPER, normalise(id_number))`, where
-  `normalise` uppercases and strips spaces and hyphens.
+- **V10 — Hashing:** `normalise` uppercases and strips spaces and hyphens. One hash per identifier
+  Didit returns (e.g. both FIN and FAN if both are present).
+  - Fayda: `hash = HMAC_SHA256(ID_HASH_PEPPER, kind + ":" + normalise(number))`, e.g. input
+    `fayda_fin:123456789012`.
+  - Passport: `hash = HMAC_SHA256(ID_HASH_PEPPER, "passport:" + country + ":" + normalise(number))`,
+    where `country` is the issuing country as ISO 3166-1 alpha-3, uppercase, taken from Didit's
+    decision data (field confirmed in T2.1), e.g. input `passport:ETH:EP1234567`. Passports from
+    different countries can share a number, so the country is part of the identity. No issuing
+    country → V8.
 - **V11 — Idempotency:** processing the same webhook event twice changes nothing the second time.
-- **V12 — Out-of-order events:** a late "In Progress" event must never overwrite a final outcome.
+  An event is only skipped when its `processed_at` is set.
+- **V12 — Out-of-order events:** a late non-final Didit status (Not Started / In Progress /
+  In Review) never changes an attempt that is no longer `pending`.
+- **V13 — Blocked or in review can't start:** a user whose status is `manual_review` cannot start
+  a new session (`VERIFICATION_IN_REVIEW`). A `blocked` user cannot start one either and gets a
+  neutral error (`VERIFICATION_UNAVAILABLE`).
+- **V14 — Superseding:** creating a new session marks any older `pending` attempt of the same
+  user `abandoned` locally (and stops polling it). If a final Didit decision arrives for it later,
+  it is still processed.
+- **V15 — Transitions after a final outcome:**
+  - **Staff decisions are final.** If `decided_by_admin_id` is set, later Didit events only update
+    `provider_status`.
+  - **`blocked` is never lifted automatically.** Later Didit events only update `provider_status`.
+  - **`manual_review` waits for staff.** Later Didit events only update `provider_status`.
+  - **`abandoned` / `expired`** (locally): a final Didit decision (Approved / Declined) is still
+    processed; non-final statuses are ignored (V12).
+  - **`approved` / `declined` set from Didit:** Didit may move the attempt between its own
+    outcomes (e.g. approved → declined after Didit's review). We accept it (re-running V4–V8 on
+    Approved) and recompute. If a user who was `approved` stops being approved this way:
+    clear `users.verified_at`, keep `full_name` and `date_of_birth` as history, recompute, and
+    flag the attempt for staff (`flag_reason = APPROVAL_REVERSED`).
+- **V16 — Polling expiry:** an attempt still `pending` 24 hours after creation is marked
+  `expired`, its URL/token are cleared, and it is no longer polled.
 
 ---
 
 ## 5. Staff (admin) side
 
 Temporary UI: Swagger at `/docs` with the admin bearer token. A web admin comes later.
+In production, `/docs` itself is only served behind admin auth (a browser can't attach a bearer
+token when loading the page, so the page is protected separately, e.g. HTTP Basic checked against
+`admin_users`; the admin API still requires the admin bearer token).
 
 ### Endpoints
 - `POST /admin/auth/login { email, password }` → admin access token (`ADMIN_JWT_SECRET`).
-- `GET /admin/verifications?status=manual_review|blocked` — queue, oldest first. Shows user
-  phone, attempt history, Didit session IDs (staff open images in the Didit console, never in our system).
-- `POST /admin/verifications/:attemptId/approve { note }` — moderator+. Runs V4–V6 again before
-  approving; then sets user `approved`.
-- `POST /admin/verifications/:attemptId/decline { reasonCode, note }` — moderator+.
-- `POST /admin/users/:userId/ban { reason }` — moderator+. Sets `users.status = banned`, revokes
-  all refresh tokens, and adds the user's approved `id_number_hash` to `banned_identities`.
-- `POST /admin/users/:userId/unban { note }` — super_admin only.
+- `GET /admin/verifications?status=manual_review|blocked&flagged=true` — queue, oldest first. Shows
+  user phone, attempt history, flag reason, Didit session IDs (staff open images in the Didit
+  console, never in our system).
+- `POST /admin/verifications/:attemptId/approve { note, documentType?, idNumber?, issuingCountry?, dateOfBirth?, fullName? }`
+  — moderator+. See S4.
+- `POST /admin/verifications/:attemptId/decline { reasonCode, note }` — moderator+. Sets the
+  attempt `declined` (final, staff decision) and recomputes, so the user goes back to `declined`
+  and normal retry rules apply.
+- `POST /admin/users/:userId/ban { reason }` — moderator+. See S5.
+- `POST /admin/users/:userId/unban { note }` — super_admin only. See S5.
 - `GET /admin/actions?targetId=` — audit log.
 - A CLI command or seed script creates the first `super_admin` (never an open endpoint).
 
@@ -278,6 +405,19 @@ Temporary UI: Swagger at `/docs` with the admin bearer token. A web admin comes 
 - **S1** Every endpoint above that changes data writes to `admin_actions`.
 - **S2** `support` can read everything here but change nothing.
 - **S3** Admin tokens are rejected on app routes and app tokens on admin routes.
+- **S4 — Staff approval:** approval always requires at least one identity hash and a date of birth
+  on the attempt. If Didit didn't return them, staff must enter `documentType`, `idNumber` and
+  `dateOfBirth` (read from the Didit console), plus `issuingCountry` (ISO 3166-1 alpha-3) for a
+  passport, and `fullName` if Didit returned no name. The number
+  is normalised and hashed into `identity_hashes` immediately and never stored raw (not in
+  `admin_actions` either). Then V4–V6 run again; a failure rejects the approval with its error code.
+  On success the attempt becomes `approved` with `decided_by_admin_id` set, and the user is recomputed.
+- **S5 — Ban / unban:**
+  - Ban sets `users.status = banned`, revokes all refresh tokens, and copies every hash of the
+    user's approved attempt into `banned_identities`. A user with no approved attempt is only set
+    to `banned`.
+  - Unban sets `users.status = active`, sets `lifted_at`/`lifted_by_admin_id` on that user's active
+    `banned_identities` rows, and recomputes the user's verification status.
 
 ---
 
@@ -285,16 +425,19 @@ Temporary UI: Swagger at `/docs` with the admin bearer token. A web admin comes 
 
 Screens: phone entry → OTP → home showing verification status → "Verify my identity" (opens the
 Didit flow) → result screen (approved / declined with a retry option / pending / manual review /
-neutral "contact support" for blocked). Tokens stored in secure storage; access token refreshed
-automatically.
+neutral "contact support" for blocked). Language picker uses `PATCH /me`. Tokens stored in secure
+storage; access token refreshed automatically.
 
 ---
 
 ## 7. Testing checklist
 
-Unit or e2e tests must cover: A1–A7, V1–V12, S1–S3, webhook signature rejection, and the polling
-job picking up a stuck session. Use a fake Didit client and self-signed fake webhook payloads —
-tests must not call the real Didit API.
+Unit or e2e tests must cover: A1–A9, V1–V16, S1–S5, every branch of
+`recomputeVerificationStatus`, the global guards and `@Public()`, `PATCH /me` rejecting identity
+fields, webhook signature rejection, re-processing an event whose `processed_at` is null, the
+partial unique index rejecting a second approval of the same strong hash, and the polling job
+picking up a stuck session and expiring one after 24 hours. Use a fake Didit client and
+self-signed fake webhook payloads — tests must not call the real Didit API.
 
 ## 8. Manual end-to-end check
 
@@ -303,6 +446,11 @@ tests must not call the real Didit API.
    `https://<tunnel>/webhooks/didit` as the webhook URL in the Didit console.
 3. Sign up with your phone (code appears in the console), start verification, complete it on
    your phone with your real ID.
-4. Confirm `GET /me` shows `approved`, and `identity_verifications` contains **no images and no
-   raw ID number**.
-5. Repeat with a second phone and the same ID → must end `blocked` (V6).
+4. Confirm `GET /me` shows `approved`, and that `identity_verifications` and `identity_hashes`
+   contain **no images and no raw ID number**.
+5. Note exactly what Didit returned for a Fayda ID: which numbers (FIN, FAN or both), and whether
+   the date of birth is Gregorian or Ethiopian calendar. Check whether Didit accepts the printed
+   paper Fayda credential and the digital Fayda, not only the physical card. Update V4, V10 and
+   the `kind` enum if needed.
+6. Confirm the Didit workflow rejects any document other than a national ID or passport.
+7. Repeat with a second phone and the same ID → must end `blocked` (V6).

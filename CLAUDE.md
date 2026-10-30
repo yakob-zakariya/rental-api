@@ -20,11 +20,14 @@ and ask instead of building them.
 
 ## Stack
 
-- **Backend:** NestJS (TypeScript, strict mode), Node.js LTS
+- **Backend:** NestJS 12 (TypeScript, strict mode, **ESM** — `"type": "module"`), Node.js LTS
+- **Tests:** Vitest (`vitest.config.ts` for unit, `vitest.config.e2e.ts` for e2e) — not Jest
+- **Lint / format:** oxlint (type-aware) + Prettier — not ESLint
 - **Database:** PostgreSQL with PostGIS, via **TypeORM**
 - **Queues / cache:** Redis (BullMQ via `@nestjs/bullmq` when queues are needed)
 - **Scheduling:** `@nestjs/schedule`
-- **Identity verification (KYC):** Didit (https://docs.didit.me) — ID document + passive liveness + face match
+- **Identity verification (KYC):** Didit (https://docs.didit.me) — ID document + passive liveness + face match.
+  Accepted documents: Fayda national ID (primary) and passports only.
 - **Mobile app:** Flutter, in a separate repo (`rental-app`), not this one
 - **Local infrastructure:** Docker Compose (Postgres + PostGIS, Redis)
 - **API docs:** `@nestjs/swagger` (Swagger UI also serves as the temporary admin UI in Phase 1)
@@ -52,14 +55,16 @@ docs/
 
 ## Commands
 
-Fill these in once the project is scaffolded, and keep them accurate.
+Keep these accurate. The `docker compose` and `migration:*` commands don't exist yet (added in
+T0.2 and T0.4).
 
 ```
 docker compose up -d          # start Postgres + Redis
 npm run start:dev             # run the API
-npm run test                  # unit tests
-npm run test:e2e              # end-to-end tests
-npm run lint
+npm run test                  # unit tests (Vitest)
+npm run test:e2e              # end-to-end tests (Vitest)
+npm run lint                  # oxlint
+npm run format                # Prettier
 npm run migration:generate -- src/database/migrations/<Name>
 npm run migration:run
 npm run migration:revert
@@ -69,10 +74,15 @@ npm run migration:revert
 
 1. **Never store ID document images, selfies, face data or raw ID numbers.** Store only: the
    provider's session ID, status, decline reason, document type, verified name, date of birth,
-   and an HMAC hash of the ID number. Images stay with Didit.
-2. **ID numbers are hashed with HMAC-SHA256 using the `ID_HASH_PEPPER` secret**, after
-   normalisation (uppercase, strip spaces and hyphens). Never plain SHA-256 — ID numbers are
-   short and guessable.
+   and HMAC hashes of the ID numbers (`identity_hashes`). Images stay with Didit. Raw ID numbers
+   typed in by staff are hashed immediately and never stored or logged, not even in `admin_actions`.
+2. **ID numbers are hashed with HMAC-SHA256 using the `ID_HASH_PEPPER` secret**, as
+   `HMAC(ID_HASH_PEPPER, kind + ":" + normalise(number))` where `kind` is the identifier type
+   (`fayda_fin`, `fayda_fan`, `passport`) and `normalise` uppercases and strips spaces and hyphens.
+   Passports also include the ISO 3166-1 alpha-3 issuing country:
+   `HMAC(ID_HASH_PEPPER, "passport:" + country + ":" + normalise(number))`, e.g. `passport:ETH:EP1234567`.
+   Never plain SHA-256 — ID numbers are short and guessable. OTP codes are likewise stored only as
+   an HMAC (`OTP_HASH_SECRET`).
 3. **`synchronize: false` always.** Every schema change goes through a generated migration.
 4. **Never trust a webhook without verifying its signature.** Use Didit's documented scheme
    exactly. Process each event once (idempotency).
@@ -95,6 +105,9 @@ npm run migration:revert
 - Use UUID primary keys (`uuid` type) for all user-facing entities.
 - Timestamps: `created_at`, `updated_at` with `timestamptz`. Store UTC; the app shows Africa/Addis_Ababa.
 - Wrap external services (Didit, SMS) behind an interface in their module so they can be faked in tests.
+- `JwtAuthGuard` + `ActiveAccountGuard` are global for app routes; mark exceptions with `@Public()`.
+  Admin routes use the admin guards instead.
+- `users.verification_status` is derived: only `recomputeVerificationStatus(userId)` writes it.
 - Errors: throw Nest HTTP exceptions with stable error codes in the body, e.g. `{ code: 'VERIFICATION_RETRY_LIMIT' }`.
 
 ## How to work in this repo
