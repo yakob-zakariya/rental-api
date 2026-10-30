@@ -59,7 +59,8 @@ SMS_PROVIDER=console       # 'console' logs codes in development
 DIDIT_API_KEY=
 DIDIT_WEBHOOK_SECRET=
 DIDIT_WORKFLOW_ID=
-DIDIT_BASE_URL=https://verification.didit.me   # confirm against docs.didit.me
+DIDIT_BASE_URL=https://verification.didit.me   # confirmed (docs/didit-integration.md)
+DIDIT_ENVIRONMENT=sandbox  # sandbox | live; webhook events from the other environment are rejected (T2.5)
 APP_VERIFICATION_CALLBACK_URL=   # where Didit sends the user back after the flow
 ```
 
@@ -122,7 +123,7 @@ All IDs are UUIDs; all timestamps are `timestamptz`.
 | session_token | varchar null | So V2 can resume the session; cleared on a final outcome |
 | manual_review_requested_at | timestamptz null | Set when the user requests manual review on this attempt |
 | flagged_at | timestamptz null | Needs staff attention (V6, approved → declined, …) |
-| flag_reason | varchar null | Internal code, e.g. `DUPLICATE_IDENTITY`, `APPROVAL_REVERSED` |
+| flag_reason | varchar null | Internal code, e.g. `DUPLICATE_IDENTITY`, `APPROVAL_REVERSED`, `DATA_UPDATED` |
 | decided_by_admin_id | uuid null FK → admin_users | Set when staff approve/decline; makes the outcome final |
 | decided_at | timestamptz null | |
 | completed_at | timestamptz null | |
@@ -136,7 +137,7 @@ All IDs are UUIDs; all timestamps are `timestamptz`.
 | id | uuid PK | |
 | verification_id | uuid FK → identity_verifications | indexed |
 | user_id | uuid FK → users | indexed |
-| kind | enum `fayda_fin`,`fayda_fan`,`passport` | Only accepted documents (FIN/FAN usage confirmed in T2.1) |
+| kind | enum `fayda_fin`,`fayda_fan`,`passport` | Only accepted documents (which Fayda numbers Didit returns: confirm in T2.9) |
 | hash | varchar | See V10 (passports include the issuing country); indexed |
 | is_approved | boolean | default false; mirrors whether the attempt's outcome is `approved` (kept in sync in the same transaction) — needed for the partial unique index |
 | created_at | timestamptz | |
@@ -151,7 +152,7 @@ All IDs are UUIDs; all timestamps are `timestamptz`.
 | --- | --- | --- |
 | id | uuid PK | |
 | provider_session_id | varchar | indexed |
-| event_key | varchar unique | Derived from session ID + status (+ timestamp if provided) |
+| event_key | varchar unique | Didit's `event_id` (stable across retries of the same event) |
 | provider_status | varchar | |
 | received_at | timestamptz | |
 | processed_at | timestamptz null | |
@@ -255,18 +256,32 @@ banned again after being lifted).
    - Check eligibility, in this order: V1, V13, V2 (resume), V3.
    - Mark any older `pending` attempt of this user as `abandoned` (V14).
    - Call Didit to create a session with our `DIDIT_WORKFLOW_ID`, passing our `user.id` as
-     `vendor_data` and `APP_VERIFICATION_CALLBACK_URL` as the callback.
+     `vendor_data`, `APP_VERIFICATION_CALLBACK_URL` as the callback, and
+     `expected_details.expected_document_types = ["ID", "P"]` (on top of the workflow's own
+     document restriction).
+   - Didit keeps at most one unfinished session per (`workflow_id`, `vendor_data`): while one is
+     `Not Started`, `In Progress`, `Resubmitted` or `Awaiting User`, "create" returns that same
+     session. If the returned `session_id` is one of our attempts, it is a **resume** (V2, V14):
+     refresh that attempt's `verification_url` and `session_token`, create no new row, and don't
+     count it toward V3.
    - Save an `identity_verifications` row (`outcome = pending`, with `verification_url` and
      `session_token`), then `recomputeVerificationStatus(userId)`.
    - Return `{ verificationUrl, sessionToken }` to the app.
 2. **User completes the flow** in the app (Didit SDK or hosted page): document front/back,
    then a selfie with passive liveness.
 3. **Webhook:** `POST /webhooks/didit` (`@Public()`; no JWT).
-   - Verify the signature exactly as Didit documents it (prefer `X-Signature-V2`). Reject invalid
-     signatures with 401. If a timestamp header is provided, reject events older than 5 minutes
-     (acceptable because the polling job catches anything we reject).
-   - Build an `event_key`. If an event with that key exists **and `processed_at` is set**, return
-     200 and do nothing. If it exists but was never processed (e.g. an earlier error), process it again.
+   - Verify the signature exactly as Didit documents it (`X-Signature-V2`; recipe in
+     `docs/didit-integration.md`). Reject invalid signatures with 401. Reject events whose
+     `X-Timestamp` is more than 5 minutes from now (acceptable because the polling job catches
+     anything we reject).
+   - **Environment check:** reject events whose `environment` (`live` / `sandbox`) differs from
+     `DIDIT_ENVIRONMENT`, so sandbox events can never change production data.
+   - The `event_key` is Didit's `event_id`. If an event with that key exists **and `processed_at`
+     is set**, return 200 and do nothing. If it exists but was never processed (e.g. an earlier
+     error), process it again.
+   - `status.updated` events go to decision processing (step 4). `data.updated` events (someone
+     edited the extracted data in Didit) re-fetch the decision and flag the attempt for staff
+     (`flag_reason = DATA_UPDATED`); they never change `full_name` / `date_of_birth` (V9).
    - Store/update the event row, process the decision inline (fine for Phase 1; move to a BullMQ
      job if processing grows), set `processed_at` (or `error`), return 200.
 4. **Processing a decision** (shared by the webhook and the polling job), in one transaction:
@@ -296,17 +311,22 @@ banned again after being lifted).
 
 ### Status mapping (Didit → our attempt outcome)
 
-Confirm Didit's exact status strings in their docs before coding. The user's
+Exact, case-sensitive strings from Didit's docs (see `docs/didit-integration.md`). The user's
 `verification_status` is never set from this table directly — it is always recomputed (V13).
 
-| Didit status | Our attempt outcome |
-| --- | --- |
-| Not Started / In Progress | `pending` |
-| In Review (Didit's own review) | `pending` |
-| Approved | run V4–V8 → `approved` / `declined` / `blocked` / `manual_review` |
-| Declined | `declined` |
-| Abandoned | `abandoned` |
-| Expired | `expired` |
+| Didit status | Final at Didit? | Our attempt outcome |
+| --- | --- | --- |
+| `Not Started`, `In Progress` | No | `pending` |
+| `In Review` (Didit's own review) | No | `pending` |
+| `Resubmitted` (user redoing steps) | No | `pending` |
+| `Awaiting User` (KYB only; not expected) | No | `pending` |
+| `Approved` | Yes | run V4–V8 → `approved` / `declined` / `blocked` / `manual_review` |
+| `Declined` | Yes | `declined` |
+| `Abandoned` | Yes | `abandoned` |
+| `Expired` | Yes | `expired` |
+| `Kyc Expired` (an approved document passed its expiry date) | Yes | **no change**: record `provider_status` only; the user stays `approved`, no staff flag. An expired document doesn't change who the person is. |
+
+Non-final statuses never overwrite a final outcome (V12).
 
 ### `recomputeVerificationStatus(userId)`
 
@@ -327,7 +347,10 @@ approve/decline, unban). It derives the status from the attempt history:
 - **V1 — Already approved:** an approved user cannot start a new session (`ALREADY_VERIFIED`).
 - **V2 — One at a time / resume:** if the user has a `pending` attempt younger than 30 minutes,
   return its stored `verification_url` and `session_token` instead of creating a new session.
-  Resuming does **not** count toward V3.
+  Resuming does **not** count toward V3. Didit can also force a resume: if "create session"
+  returns a `session_id` we already have (Didit reuses an unfinished session for the same
+  `vendor_data`), refresh that attempt's `verification_url` and `session_token` and treat it as a
+  resume — no new attempt, not counted toward V3.
 - **V3 — Retry limit:** max **3 created sessions per rolling 24 hours**. Every created session
   counts, including ones that ended `abandoned` or `expired`. The 4th returns
   `{ code: 'VERIFICATION_RETRY_LIMIT', manualReviewAvailable }`, where `manualReviewAvailable` is
@@ -362,19 +385,22 @@ approve/decline, unban). It derives the status from the attempt history:
     different countries can share a number, so the country is part of the identity. No issuing
     country → V8.
 - **V11 — Idempotency:** processing the same webhook event twice changes nothing the second time.
-  An event is only skipped when its `processed_at` is set.
-- **V12 — Out-of-order events:** a late non-final Didit status (Not Started / In Progress /
-  In Review) never changes an attempt that is no longer `pending`.
+  Events are keyed by Didit's `event_id`, which is the same on every retry. An event is only
+  skipped when its `processed_at` is set, so a failed processing attempt is retried.
+- **V12 — Out-of-order events:** a late non-final Didit status (`Not Started` / `In Progress` /
+  `In Review` / `Resubmitted` / `Awaiting User`) never changes an attempt that is no longer `pending`.
 - **V13 — Blocked or in review can't start:** a user whose status is `manual_review` cannot start
   a new session (`VERIFICATION_IN_REVIEW`). A `blocked` user cannot start one either and gets a
   neutral error (`VERIFICATION_UNAVAILABLE`).
 - **V14 — Superseding:** creating a new session marks any older `pending` attempt of the same
   user `abandoned` locally (and stops polling it). If a final Didit decision arrives for it later,
-  it is still processed.
+  it is still processed. Exception: when Didit returns a session we already have (see V2), that
+  attempt is resumed, not superseded — it isn't marked `abandoned`.
 - **V15 — Transitions after a final outcome:**
   - **Staff decisions are final.** If `decided_by_admin_id` is set, later Didit events only update
     `provider_status`.
   - **`blocked` is never lifted automatically.** Later Didit events only update `provider_status`.
+  - **`Kyc Expired`** only updates `provider_status`, whatever the outcome (see the status mapping).
   - **`manual_review` waits for staff.** Later Didit events only update `provider_status`.
   - **`abandoned` / `expired`** (locally): a final Didit decision (Approved / Declined) is still
     processed; non-final statuses are ignored (V12).
