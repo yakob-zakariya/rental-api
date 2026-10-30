@@ -193,3 +193,23 @@ Phase 1 tables are detailed in `phase-1-spec.md`. Later tables:
 - `strikes` — user_id, report_id, issued_by, created_at
 - `saved_searches`, `favorites`, `devices` (push tokens), `amenities` + pivot
 - Later: `subscriptions`, `payments`
+
+## 14. Deployment checklist
+
+Things that are fine for local development but must be settled before (or when) we deploy.
+
+- **Trust the reverse proxy for client IPs.** The API doesn't trust `X-Forwarded-For` yet. Behind
+  Nginx/Caddy (or any load balancer), every request then appears to come from the proxy, so **all
+  users share one rate-limit bucket** and per-IP limits (including A8) stop working. Add a
+  `TRUST_PROXY` setting and set Express's `trust proxy` to exactly the proxy hop(s) we run —
+  never `true` blindly, or clients can spoof their IP.
+- **Rate-limit storage is in memory, per process.** Fine for a single instance. With more than one
+  instance (or across restarts) each process counts separately, so limits are effectively
+  multiplied. Move the throttler to Redis-backed storage before running more than one instance.
+  Limits that must survive restarts (e.g. the per-phone OTP limit, A3) are counted from the
+  database, not the throttler.
+- **Postgres extensions need privileges.** The first migration runs `CREATE EXTENSION postgis`
+  and `pgcrypto`, which needs superuser or the host's equivalent (e.g. a managed provider's
+  extension allow-list).
+- **Swagger in production.** Off unless `SWAGGER_ENABLED=true`; if enabled, the `/docs` page must
+  be behind staff auth first (T3.1).
