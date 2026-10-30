@@ -128,6 +128,31 @@ export class TokenService {
     });
   }
 
+  /**
+   * Checks an access token for JwtAuthGuard. Only access tokens signed with JWT_ACCESS_SECRET for
+   * the app audience pass; refresh and staff tokens don't.
+   */
+  async verifyAccessToken(
+    token: string,
+  ): Promise<{ userId: string } | 'expired' | null> {
+    try {
+      const claims = await this.jwt.verifyAsync<{
+        sub?: unknown;
+        typ?: unknown;
+      }>(token, {
+        secret: this.accessSecret,
+        algorithms: ['HS256'],
+        issuer: JWT_ISSUER,
+        audience: APP_AUDIENCE,
+      });
+      if (claims.typ !== 'access' || typeof claims.sub !== 'string')
+        return null;
+      return { userId: claims.sub };
+    } catch (error) {
+      return (error as Error).name === 'TokenExpiredError' ? 'expired' : null;
+    }
+  }
+
   /** Rule A5, and bans (T3): revokes every live refresh token of a user. */
   async revokeAllForUser(
     userId: string,

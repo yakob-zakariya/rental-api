@@ -11,6 +11,8 @@ import {
 } from './config/env.validation.js';
 import { DatabaseModule } from './database/database.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { ActiveAccountGuard } from './modules/auth/guards/active-account.guard.js';
+import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { SmsModule } from './modules/sms/sms.module.js';
 import { UsersModule } from './modules/users/users.module.js';
@@ -43,7 +45,11 @@ import { RedisModule } from './redis/redis.module.js';
   ],
   providers: [
     { provide: APP_PIPE, useFactory: createValidationPipe },
+    // Global guards run in this order: rate limit, then access token, then account status.
+    // Routes opt out of the last two with @Public().
     { provide: APP_GUARD, useClass: AppThrottlerGuard },
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: ActiveAccountGuard },
   ],
 })
 export class AppModule {}
