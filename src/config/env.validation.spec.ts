@@ -127,6 +127,20 @@ describe('validateEnv', () => {
     },
   );
 
+  describe('SMS_PROVIDER=console', () => {
+    it('is rejected in production', () => {
+      expect(errorOf({ ...validEnv(), NODE_ENV: 'production' })).toContain(
+        "SMS_PROVIDER=console logs OTP codes and can't be used in production",
+      );
+    });
+
+    it.each(['development', 'test'])('is allowed in %s', (nodeEnv) => {
+      const env = validateEnv({ ...validEnv(), NODE_ENV: nodeEnv });
+
+      expect(env.SMS_PROVIDER).toBe(SmsProvider.Console);
+    });
+  });
+
   describe('placeholder values', () => {
     const withPlaceholders = (nodeEnv: string) => ({
       ...validEnv(),
