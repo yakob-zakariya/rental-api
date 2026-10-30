@@ -375,13 +375,21 @@ approve/decline, unban). It derives the status from the attempt history:
   birth, or a passport with no issuing country → `manual_review`.
 - **V9 — Locked identity:** once approved, `full_name` and `date_of_birth` cannot change via any
   user endpoint.
-- **V10 — Hashing:** `normalise` uppercases and strips spaces and hyphens. One hash per identifier
-  Didit returns (e.g. both FIN and FAN if both are present).
+- **V10 — Hashing:** `normalise(number)` is, in this order:
+  1. Unicode NFKC normalisation (e.g. full-width `１２３` → `123`);
+  2. uppercase;
+  3. remove all whitespace (`\s`, including non-breaking spaces) and all dash punctuation
+     (`\p{Pd}`: ASCII hyphen, en dash, em dash, U+2010 hyphen, …).
+
+  **This normalisation must never change after real users are verified**, for the same reason as
+  `ID_HASH_PEPPER`: a different normalisation produces different hashes, which silently breaks V5
+  (bans) and V6 (duplicates) for everyone verified before. One hash per identifier Didit returns
+  (e.g. both FIN and FAN if both are present).
   - Fayda: `hash = HMAC_SHA256(ID_HASH_PEPPER, kind + ":" + normalise(number))`, e.g. input
     `fayda_fin:123456789012`.
   - Passport: `hash = HMAC_SHA256(ID_HASH_PEPPER, "passport:" + country + ":" + normalise(number))`,
     where `country` is the issuing country as ISO 3166-1 alpha-3, uppercase, taken from Didit's
-    decision data (field confirmed in T2.1), e.g. input `passport:ETH:EP1234567`. Passports from
+    decision data (`issuing_state`, already alpha-3), e.g. input `passport:ETH:EP1234567`. Passports from
     different countries can share a number, so the country is part of the identity. No issuing
     country → V8.
 - **V11 — Idempotency:** processing the same webhook event twice changes nothing the second time.

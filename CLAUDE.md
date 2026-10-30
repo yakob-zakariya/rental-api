@@ -84,7 +84,8 @@ npm run migration:show
    typed in by staff are hashed immediately and never stored or logged, not even in `admin_actions`.
 2. **ID numbers are hashed with HMAC-SHA256 using the `ID_HASH_PEPPER` secret**, as
    `HMAC(ID_HASH_PEPPER, kind + ":" + normalise(number))` where `kind` is the identifier type
-   (`fayda_fin`, `fayda_fan`, `passport`) and `normalise` uppercases and strips spaces and hyphens.
+   (`fayda_fin`, `fayda_fan`, `passport`) and `normalise` applies Unicode NFKC, uppercases, and removes all
+   whitespace and dash punctuation (exact definition: spec V10; it must never change after launch).
    Passports also include the ISO 3166-1 alpha-3 issuing country:
    `HMAC(ID_HASH_PEPPER, "passport:" + country + ":" + normalise(number))`, e.g. `passport:ETH:EP1234567`.
    Never plain SHA-256 — ID numbers are short and guessable. OTP codes are likewise stored only as
