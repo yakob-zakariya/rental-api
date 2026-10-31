@@ -1,8 +1,8 @@
 import { DiditApiError } from './didit-api.error.js';
 import { DiditClient } from './didit-client.js';
+import { trimIdVerifications } from './decision-parser.js';
 import {
   type DiditDecision,
-  type DiditIdVerification,
   type DiditSession,
   EXPECTED_DOCUMENT_TYPES,
 } from './didit.types.js';
@@ -23,8 +23,8 @@ type Json = Record<string, unknown>;
  * Didit Sessions API v3 over fetch (docs/didit-integration.md §1).
  * - POST /v3/session/                     → createSession
  * - GET  /v3/session/{id}/decision/       → getDecision
- * Auth is the `x-api-key` header. Responses are mapped to our camelCase types and trimmed:
- * nothing else from Didit's payload (images, address, MRZ, …) leaves this class.
+ * Auth is the `x-api-key` header. Responses are mapped to our camelCase types and trimmed by
+ * trimIdVerifications: nothing else from Didit's payload (images, address, MRZ, …) leaves it.
  */
 export class HttpDiditClient extends DiditClient {
   private readonly timeoutMs: number;
@@ -79,7 +79,7 @@ export class HttpDiditClient extends DiditClient {
       sessionId: id,
       status,
       vendorData: str(body.vendor_data),
-      idVerifications: items.filter(isObject).map(toIdVerification),
+      idVerifications: trimIdVerifications(items),
     };
   }
 
@@ -165,22 +165,6 @@ function parseRetryAfter(value: string | null): number | undefined {
   return Number.isNaN(at)
     ? undefined
     : Math.max(0, Math.ceil((at - Date.now()) / 1000));
-}
-
-function toIdVerification(item: Json): DiditIdVerification {
-  // An explicit allow-list: image URLs and other personal data never get copied.
-  return {
-    status: str(item.status),
-    documentType: str(item.document_type),
-    documentSubtype: str(item.document_subtype),
-    documentNumber: str(item.document_number),
-    personalNumber: str(item.personal_number),
-    issuingState: str(item.issuing_state),
-    dateOfBirth: str(item.date_of_birth),
-    fullName: str(item.full_name),
-    firstName: str(item.first_name),
-    lastName: str(item.last_name),
-  };
 }
 
 const invalidResponse = (label: string) =>

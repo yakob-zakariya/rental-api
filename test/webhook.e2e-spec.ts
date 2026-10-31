@@ -128,6 +128,21 @@ describe('POST /webhooks/didit (e2e)', () => {
         status: 'Approved',
         environment: 'sandbox',
         vendorData: 'user-1',
+        // Trimmed by the allow-list: only the fields decision processing needs.
+        idVerifications: [
+          {
+            status: 'Approved',
+            documentType: null,
+            documentSubtype: null,
+            documentNumber: 'EP1234567',
+            personalNumber: null,
+            issuingState: null,
+            dateOfBirth: null,
+            fullName: 'Abebe Kebede',
+            firstName: null,
+            lastName: null,
+          },
+        ],
       },
     ]);
     expect(await events()).toEqual([

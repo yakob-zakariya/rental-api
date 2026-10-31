@@ -1,7 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
+import type { DiditIdVerification } from './didit.types.js';
 
-/** The verified envelope of a Didit webhook event (never the decision payload). */
+/** A verified Didit webhook event: its envelope plus the trimmed documents of its decision. */
 export interface DiditWebhookEvent {
   eventId: string;
   webhookType: string;
@@ -9,11 +9,13 @@ export interface DiditWebhookEvent {
   status: string;
   environment: string;
   vendorData: string | null;
+  /** decision.id_verifications[], trimmed (hard rule 1); null when the payload had no decision. */
+  idVerifications: DiditIdVerification[] | null;
 }
 
 /**
  * Applies a verified Didit event (status.updated / data.updated) inside the webhook's
- * transaction. Decision data is re-fetched through DiditClient, which trims it (hard rule 1).
+ * transaction. Its decision data has already been trimmed (hard rule 1).
  * Throwing rolls the transaction back and makes the webhook return 500 so Didit retries.
  */
 export abstract class DiditEventProcessor {
@@ -21,17 +23,4 @@ export abstract class DiditEventProcessor {
     event: DiditWebhookEvent,
     manager: EntityManager,
   ): Promise<void>;
-}
-
-/** Placeholder until decision processing exists (T2.6): only logs the envelope. */
-@Injectable()
-export class LoggingDiditEventProcessor extends DiditEventProcessor {
-  private readonly logger = new Logger('DiditEvents');
-
-  process(event: DiditWebhookEvent): Promise<void> {
-    this.logger.log(
-      `Didit ${event.webhookType} for session ${event.sessionId}: ${event.status} (not processed yet)`,
-    );
-    return Promise.resolve();
-  }
 }
