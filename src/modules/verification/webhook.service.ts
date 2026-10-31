@@ -16,6 +16,7 @@ import {
   DiditEventProcessor,
   type DiditWebhookEvent,
 } from './didit/didit-event-processor.js';
+import { trimIdVerifications } from './didit/decision-parser.js';
 import { verifyDiditSignature } from './didit/webhook-signature.js';
 
 /** Event types handed to the processor; any other type is recorded and marked processed. */
@@ -60,6 +61,7 @@ export class WebhookService {
       this.logger.warn(`Rejected a Didit webhook: ${check.reason}`);
       throw new UnauthorizedException({ code: 'WEBHOOK_SIGNATURE_INVALID' });
     }
+    this.logger.debug(`Didit webhook signature verified via ${check.via}`);
 
     const event = parseEnvelope(delivery.body);
     if (event.environment !== this.environment) {
@@ -173,5 +175,13 @@ function parseEnvelope(body: unknown): DiditWebhookEvent {
     status: b.status as string,
     environment: b.environment as string,
     vendorData: typeof b.vendor_data === 'string' ? b.vendor_data : null,
+    idVerifications: idVerificationsOf(b.decision),
   };
+}
+
+/** decision.id_verifications[], trimmed; null when there is no decision (or no such array). */
+function idVerificationsOf(decision: unknown) {
+  if (typeof decision !== 'object' || decision === null) return null;
+  const items = (decision as Record<string, unknown>).id_verifications;
+  return Array.isArray(items) ? trimIdVerifications(items) : null;
 }

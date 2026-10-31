@@ -50,13 +50,21 @@ Restart `start:dev` after editing `.env`.
 | Check | Expect |
 | --- | --- |
 | Didit console → destination → **Deliveries** | 200 for each event |
-| `start:dev` log | `[DiditEvents] Didit status.updated for session … (not processed yet)` |
+| `start:dev` log | `[Decisions] Attempt …: approved` (or the outcome and reason/flag) |
 | `SELECT event_key, webhook_type, provider_status, processed_at, error FROM verification_webhook_events;` | one row per event, `processed_at` set, `error` null |
 | Resend the same delivery from the console | 200 again, still one row (V11) |
 | Change `DIDIT_WEBHOOK_SECRET` to something wrong, restart, resend | 401 in Deliveries; log `Rejected a Didit webhook: bad_signature`; no new row |
 
-Until decision processing exists (T2.6) the attempt stays `pending`: events are recorded but not
-applied.
+After an approval, `GET /me` shows `verificationStatus: "approved"` with `fullName` and
+`dateOfBirth` filled in. In the **sandbox** app every outcome is simulated (e.g. Didit's
+`sandbox_scenario`); real documents are only checked in the live app (T2.9).
+
+| Look at | Expect |
+| --- | --- |
+| `SELECT outcome, provider_status, decline_reason, flag_reason, verified_name, date_of_birth FROM identity_verifications;` | the attempt's outcome; `verification_url`/`session_token` cleared once final |
+| `SELECT kind, is_approved FROM identity_hashes;` | one row per identifier, `is_approved = true` only for an approved attempt; **no raw numbers** (only 64-hex hashes) |
+| `SELECT verification_status, verified_at, full_name, date_of_birth FROM users;` | matches `/me` |
+| `POST /verification/sessions` after approval | 409 `ALREADY_VERIFIED` (V1) |
 
 ## Worth trying on purpose
 

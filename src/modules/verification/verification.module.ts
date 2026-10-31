@@ -1,9 +1,8 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import {
-  DiditEventProcessor,
-  LoggingDiditEventProcessor,
-} from './didit/didit-event-processor.js';
+import { DecisionProcessor } from './decision/decision.processor.js';
+import { DecisionService } from './decision/decision.service.js';
+import { DiditEventProcessor } from './didit/didit-event-processor.js';
 import { DiditModule } from './didit/didit.module.js';
 import { BannedIdentity } from './entities/banned-identity.entity.js';
 import { IdentityHash } from './entities/identity-hash.entity.js';
@@ -32,9 +31,14 @@ import { VerificationStatusService } from './verification-status.service.js';
     VerificationStatusService,
     VerificationService,
     WebhookService,
-    // Replaced by decision processing in T2.6.
-    { provide: DiditEventProcessor, useClass: LoggingDiditEventProcessor },
+    DecisionService,
+    { provide: DiditEventProcessor, useClass: DecisionProcessor },
   ],
-  exports: [TypeOrmModule, IdentityHasher, VerificationStatusService],
+  exports: [
+    TypeOrmModule,
+    IdentityHasher,
+    VerificationStatusService,
+    DecisionService,
+  ],
 })
 export class VerificationModule {}
