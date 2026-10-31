@@ -1,0 +1,658 @@
+{
+  "info": {
+    "_postman_id": "6f1c2b8e-4d2a-4c1e-9b7a-1a2b3c4d5e6f",
+    "name": "rental-api (Phase 1)",
+    "description": "Manual testing of rental-api, in user-journey order. Select the \"rental-api local\" environment first. See docs/manual-testing.md for the full walkthrough.\n\nAuth: every protected request sends the collection's Bearer {{accessToken}}; \"OTP verify\" and \"Refresh\" save the tokens into the environment automatically. Public requests (health, auth) are set to No Auth.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "1. Health",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "200 with database and redis both `up`; 503 if either is down.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Auth",
+      "item": [
+        {
+          "name": "OTP request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/otp/request",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "otp",
+                "request"
+              ]
+            },
+            "description": "200 `{ expiresInSeconds: 300 }`. The code is printed in the `npm run start:dev` terminal (`[SMS] To +2519…: Your rental code is …`): copy it into the environment variable `otpCode` before \"OTP verify\". Max 3 requests per phone per 10 minutes (A3).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{phone}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "OTP verify",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/otp/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "otp",
+                "verify"
+              ]
+            },
+            "description": "200 `{ accessToken, refreshToken, accessTokenExpiresIn }`. The test script saves both tokens into the environment. Creates the account on first sign-in.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{phone}}\",\n  \"code\": \"{{otpCode}}\",\n  \"deviceName\": \"Postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  // Saved for every protected request ({{accessToken}}) and for refresh/logout.",
+                  "  pm.environment.set('accessToken', body.accessToken);",
+                  "  pm.environment.set('refreshToken', body.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "refresh"
+              ]
+            },
+            "description": "200 with a new pair (saved automatically); the old refresh token is revoked. Reusing an old one within 60 s still works (A5 grace); after the new one was used, reuse revokes every session (401 `INVALID_REFRESH_TOKEN`).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  // Saved for every protected request ({{accessToken}}) and for refresh/logout.",
+                  "  pm.environment.set('accessToken', body.accessToken);",
+                  "  pm.environment.set('refreshToken', body.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ]
+            },
+            "description": "204 always (also for an unknown or already-revoked token). Sign in again afterwards.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 204', () => pm.response.to.have.status(204));",
+                  "// The refresh token is revoked now; clear it so it isn't reused by mistake.",
+                  "pm.environment.set('refreshToken', '');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Me",
+      "item": [
+        {
+          "name": "Get me",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "me"
+              ]
+            },
+            "description": "200, your profile and `verificationStatus`. 401 `ACCESS_TOKEN_EXPIRED` after 15 minutes: run \"Refresh\"."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update language",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "me"
+              ]
+            },
+            "description": "200 with the updated profile. `preferredLanguage` (`am`, `om`, `en`) is the only editable field.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"preferredLanguage\": \"en\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Verification",
+      "item": [
+        {
+          "name": "Start session",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/verification/sessions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "verification",
+                "sessions"
+              ]
+            },
+            "description": "201 `{ verificationUrl, sessionToken }`; open `verificationUrl` (also saved to the environment) in a browser. Needs the sandbox Didit values in `.env` (else 503 `VERIFICATION_PROVIDER_UNAVAILABLE`). Within 30 minutes the same session is returned (V2). Other answers: 409 `ALREADY_VERIFIED` / `VERIFICATION_IN_REVIEW`, 403 `VERIFICATION_UNAVAILABLE`, 429 `VERIFICATION_RETRY_LIMIT`."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) pm.environment.set('verificationUrl', pm.response.json().verificationUrl);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/verification/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "verification",
+                "status"
+              ]
+            },
+            "description": "200 `{ status, canRetry, retriesLeftToday, canRequestManualReview, reasonCode? }`."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Manual review request",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/verification/manual-review-request",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "verification",
+                "manual-review-request"
+              ]
+            },
+            "description": "200 with the new status (`manual_review`) only at the retry limit after a Didit decline; otherwise 409 `MANUAL_REVIEW_NOT_AVAILABLE` (or `ALREADY_VERIFIED` / `VERIFICATION_IN_REVIEW`, 403 `VERIFICATION_UNAVAILABLE`). Check \"Status\" → `canRequestManualReview` first."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "5. Expected failures",
+      "description": "Each request here should fail; its description says how, and its test checks it.",
+      "item": [
+        {
+          "name": "Fresh OTP code (for the next request)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/otp/request",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "otp",
+                "request"
+              ]
+            },
+            "description": "200. Sends a new code so \"Wrong OTP code\" has a live code to guess against (after \"OTP verify\" the previous code is used up). Counts toward the 3 OTP requests per phone per 10 minutes (A3): if you get 429 `OTP_RATE_LIMITED`, wait `retryAfterSeconds`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{phone}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Wrong OTP code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/otp/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "otp",
+                "verify"
+              ]
+            },
+            "description": "Expect **400 `OTP_INVALID`** with `attemptsRemaining` (run the request above first; against an already-used code you get `OTP_EXPIRED` instead). Each try uses one of the code's 5 attempts (A2); after the 5th: `OTP_ATTEMPTS_EXCEEDED`. If 000000 happens to be the real code, you just signed in.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{phone}}\",\n  \"code\": \"000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('code OTP_INVALID', () => pm.expect(pm.response.json().code).to.eql('OTP_INVALID'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Landline number",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/otp/request",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "otp",
+                "request"
+              ]
+            },
+            "description": "Expect **400 `INVALID_PHONE`**: only Ethiopian mobile numbers (+2519…, +2517…) may sign up. No SMS is sent.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"0111234567\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('code INVALID_PHONE', () => pm.expect(pm.response.json().code).to.eql('INVALID_PHONE'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "fullName in PATCH /me",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "me"
+              ]
+            },
+            "description": "Expect **400 `VALIDATION_FAILED`**: name and date of birth can never be changed by the user (V9). Nothing is saved.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"preferredLanguage\": \"en\",\n  \"fullName\": \"Someone Else\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('code VALIDATION_FAILED', () => pm.expect(pm.response.json().code).to.eql('VALIDATION_FAILED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get me without a token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "me"
+              ]
+            },
+            "description": "Expect **401 `UNAUTHENTICATED`**: every route except health and auth needs an access token.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.response.to.have.status(401));",
+                  "pm.test('code UNAUTHENTICATED', () => pm.expect(pm.response.json().code).to.eql('UNAUTHENTICATED'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": []
+}
