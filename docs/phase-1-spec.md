@@ -40,6 +40,7 @@ PORT=3000
 DATABASE_URL=postgres://rental:rental@localhost:5432/rental
 REDIS_URL=redis://localhost:6379
 SWAGGER_ENABLED=false      # only read in production; always on in development
+JOBS_ENABLED=true          # scheduled jobs (verification polling); false in tests
 
 JWT_ACCESS_SECRET=
 JWT_REFRESH_SECRET=
@@ -126,6 +127,7 @@ All IDs are UUIDs; all timestamps are `timestamptz`.
 | flag_reason | varchar null | Internal code: `DUPLICATE_IDENTITY` (V6), `POSSIBLE_DUPLICATE` (V7), `MISSING_DATA` (V8), `DOCUMENT_MISMATCH` (V17), `DOCUMENT_DECLINED` (V18), `APPROVAL_REVERSED` (V15), `DATA_UPDATED`, `PROVIDER_SESSION_STATE_CONFLICT` |
 | decided_by_admin_id | uuid null FK → admin_users | Set when staff approve/decline; makes the outcome final |
 | decided_at | timestamptz null | |
+| pending_since | timestamptz | When the attempt (last) became `pending`: its creation, or a reopen (flow step 1). The polling job's 10-minute and 24-hour (V16) clocks count from here; V3 counts from `created_at` |
 | completed_at | timestamptz null | |
 | created_at, updated_at | timestamptz | |
 
@@ -264,8 +266,8 @@ banned again after being lifted).
      session. If the returned `session_id` is one of our attempts, it is a **resume** (V2, V14):
      refresh that attempt's `verification_url` and `session_token`, create no new row, and don't
      count it toward V3. An attempt that is `abandoned` or `expired` locally is reopened as
-     `pending` (Didit says it is still live; its sessions currently last 7 days, longer than V16's
-     24 hours). If the attempt is `approved`, `declined`, `blocked` or `manual_review` locally,
+     `pending` with `pending_since` reset (Didit says it is still live; its sessions currently last
+     7 days, longer than V16's 24 hours). If the attempt is `approved`, `declined`, `blocked` or `manual_review` locally,
      log it, flag it for staff (`flag_reason = PROVIDER_SESSION_STATE_CONFLICT`, unless it is
      already flagged) and return 503 `VERIFICATION_PROVIDER_UNAVAILABLE`.
    - Save an `identity_verifications` row (`outcome = pending`, with `verification_url` and
@@ -318,11 +320,16 @@ banned again after being lifted).
      `identity_hashes.is_approved` in sync), then `recomputeVerificationStatus(userId)`.
    - When the user ends up `approved`, set `verified_at`, `full_name`, `date_of_birth` from the
      approved attempt.
-5. **Polling fallback:** a scheduled job every 5 minutes finds attempts still `pending` for more
-   than 10 minutes and fetches their decision from Didit (`GET` session decision endpoint).
-   Attempts still `pending` 24 hours after creation are marked `expired` and no longer polled (V16).
-   Locally `abandoned` attempts are not polled. This makes webhooks a speed-up, not a single
-   point of failure.
+5. **Polling fallback:** a scheduled job every 5 minutes (when `JOBS_ENABLED`) finds attempts
+   `pending` for at least 10 minutes (counted from `pending_since`), oldest first, at most 100 per
+   pass, and fetches their decision from Didit (`GET` session decision endpoint) **outside** any
+   transaction; each result is then applied through the same decision processing as the webhook
+   (step 4), so a webhook that already won makes the poll a no-op. Only one instance runs a pass
+   at a time (advisory lock). A Didit timeout, 5xx or 429 leaves the attempt for the next pass; a
+   404 expires it at once (V16). Attempts still `pending` 24 hours after `pending_since` are
+   marked `expired` after their last poll and no longer polled (V16). Locally `abandoned` and
+   `expired` attempts are not polled. This makes webhooks a speed-up, not a single point of
+   failure.
 6. **Status:** `GET /verification/status` →
    `{ status, canRetry, retriesLeftToday, canRequestManualReview, reasonCode? }`.
    `reasonCode` is user-safe (e.g. `PHOTO_UNCLEAR`, `DOCUMENT_EXPIRED`); never reveal blocking reasons.
@@ -460,8 +467,13 @@ approve/decline, unban). It derives the status from the attempt history:
     Approved) and recompute. If a user who was `approved` stops being approved this way:
     clear `users.verified_at`, keep `full_name` and `date_of_birth` as history, recompute, and
     flag the attempt for staff (`flag_reason = APPROVAL_REVERSED`).
-- **V16 — Polling expiry:** an attempt still `pending` 24 hours after creation is marked
-  `expired`, its URL/token are cleared, and it is no longer polled. If Didit later returns that
+- **V16 — Polling expiry:** an attempt still `pending` 24 hours after `pending_since` (its
+  creation, or its last reopen) is marked `expired`, its URL/token are cleared, the user is
+  recomputed, and it is no longer polled. **Session not found:** if Didit answers 404 for the
+  session while polling, the attempt is expired at once the same way, with
+  `provider_status = 'NOT_FOUND'`, so a resume (e.g. at the V3 limit) never hands the user a
+  dead link for up to 24 hours. Only a 404 does this; timeouts, 5xx and 429 wait for the next
+  pass. If Didit later returns that
   same session on a new start (it is still unfinished there), the attempt is reopened as
   `pending` (flow step 1).
 

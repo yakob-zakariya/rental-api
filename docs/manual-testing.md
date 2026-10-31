@@ -66,6 +66,16 @@ After an approval, `GET /me` shows `verificationStatus: "approved"` with `fullNa
 | `SELECT verification_status, verified_at, full_name, date_of_birth FROM users;` | matches `/me` |
 | `POST /verification/sessions` after approval | 409 `ALREADY_VERIFIED` (V1) |
 
+## Polling (the webhook backstop)
+
+Runs every 5 minutes when `JOBS_ENABLED=true` (the default in `.env`).
+
+1. Stop the tunnel (so the webhook can't arrive), start verification and finish the flow.
+2. Within ~15 minutes (10 minutes pending + up to 5 for the next pass) the `start:dev` log shows
+   `[VerificationPolling] Pass: 1 polled, …` and `/me` shows the outcome.
+3. Attempts still pending 24 h after `pending_since` are expired; a session Didit no longer knows
+   (404) is expired at once with `provider_status = 'NOT_FOUND'`.
+
 ## Worth trying on purpose
 
 | Try | Expect |

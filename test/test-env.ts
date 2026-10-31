@@ -10,6 +10,7 @@ export const TEST_ENV = {
   // Redis database 1 is for tests; global-setup.ts flushes it on every run.
   REDIS_URL: 'redis://localhost:6379/1',
   SWAGGER_ENABLED: 'false',
+  JOBS_ENABLED: 'false', // e2e tests call the jobs directly
 
   JWT_ACCESS_SECRET: 'test-jwt-access-secret-0123456789abcdef',
   JWT_REFRESH_SECRET: 'test-jwt-refresh-secret-0123456789abcdef',

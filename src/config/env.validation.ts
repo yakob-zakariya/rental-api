@@ -98,6 +98,11 @@ export class EnvironmentVariables {
   @IsBoolean({ message: '$property must be true or false' })
   SWAGGER_ENABLED: boolean = false;
 
+  // Scheduled jobs (verification polling). Off in tests, which call the jobs directly.
+  @Transform(toBoolean)
+  @IsBoolean({ message: '$property must be true or false' })
+  JOBS_ENABLED: boolean = true;
+
   // --- Auth ---
   @IsDefined(required)
   @IsString()

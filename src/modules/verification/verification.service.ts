@@ -134,10 +134,13 @@ export class VerificationService {
         return { kind: 'conflict' };
       }
       // Didit reused an unfinished session we already have: a resume (V2, V14), not counted.
-      // An abandoned or expired attempt is reopened, since Didit says it is still live.
+      // An abandoned or expired attempt is reopened, since Didit says it is still live; its
+      // polling/V16 clock restarts (pending_since), so it isn't expired again on the next pass.
       await manager.query(
         `UPDATE identity_verifications
-         SET outcome = 'pending', verification_url = $2, session_token = $3, provider_status = $4
+         SET pending_since = CASE WHEN outcome = 'pending' THEN pending_since
+                                  ELSE clock_timestamp() END,
+             outcome = 'pending', verification_url = $2, session_token = $3, provider_status = $4
          WHERE id = $1`,
         [existing.id, session.url, session.sessionToken, session.status],
       );
