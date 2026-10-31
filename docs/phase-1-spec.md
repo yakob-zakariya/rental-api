@@ -123,7 +123,7 @@ All IDs are UUIDs; all timestamps are `timestamptz`.
 | session_token | varchar null | So V2 can resume the session; cleared on a final outcome |
 | manual_review_requested_at | timestamptz null | Set when the user requests manual review on this attempt |
 | flagged_at | timestamptz null | Needs staff attention (V6, approved → declined, …) |
-| flag_reason | varchar null | Internal code, e.g. `DUPLICATE_IDENTITY`, `APPROVAL_REVERSED`, `DATA_UPDATED` |
+| flag_reason | varchar null | Internal code: `DUPLICATE_IDENTITY` (V6), `POSSIBLE_DUPLICATE` (V7), `MISSING_DATA` (V8), `DOCUMENT_MISMATCH` (V17), `DOCUMENT_DECLINED` (V18), `APPROVAL_REVERSED` (V15), `DATA_UPDATED`, `PROVIDER_SESSION_STATE_CONFLICT` |
 | decided_by_admin_id | uuid null FK → admin_users | Set when staff approve/decline; makes the outcome final |
 | decided_at | timestamptz null | |
 | completed_at | timestamptz null | |
@@ -288,8 +288,9 @@ banned again after being lifted).
      is set**, return 200 and do nothing. If it exists but was never processed (e.g. an earlier
      error), process it again.
    - `status.updated` events go to decision processing (step 4). `data.updated` events (someone
-     edited the extracted data in Didit) re-fetch the decision and flag the attempt for staff
-     (`flag_reason = DATA_UPDATED`); they never change `full_name` / `date_of_birth` (V9).
+     edited the extracted data in Didit) only flag the attempt for staff
+     (`flag_reason = DATA_UPDATED`, unless it is already flagged); the decision is not re-fetched,
+     since nothing uses the edited data, and they never change `full_name` / `date_of_birth` (V9).
    - Store/update the event row, process the decision inline (fine for Phase 1; move to a BullMQ
      job if processing grows) and set `processed_at`, all in one transaction, then return 200.
      **If processing fails**, roll back, record `error` on the event row (leaving `processed_at`
@@ -301,7 +302,18 @@ banned again after being lifted).
    - Always record `provider_status`.
    - Apply the transition rules (V15). If the transition is allowed, map Didit's status (table
      below); if Didit approved, read the decision data, store `identity_hashes` for every
-     identifier returned, and run our own checks (V4–V8).
+     identifier returned, and run our own checks.
+   - **Decision data source:** the webhook uses the `decision` in its (signature-verified)
+     payload, trimmed by the same allow-list as the Didit client, so it answers within Didit's
+     5-second webhook timeout; if an `Approved` event carries no decision it falls back to
+     `GET …/decision/`. The polling job always uses `GET …/decision/`.
+   - **Check order** for a Didit approval (first match wins): V5 banned → V6 duplicate → V8
+     missing data → V18 declined document → V17 document mismatch → V4 age → V7 weak duplicate →
+     approved. A banned or
+     duplicate identity wins over everything; V4 only runs on a trustworthy date of birth.
+   - A Didit decline sets `decline_reason = DIDIT_DECLINED` (the user-safe `reasonCode` is T2.8).
+   - Reasons for `manual_review` are recorded as staff flags (`flag_reason`), not in
+     `decline_reason`.
    - Update the attempt (clear `verification_url`/`session_token` on a final outcome; keep
      `identity_hashes.is_approved` in sync), then `recomputeVerificationStatus(userId)`.
    - When the user ends up `approved`, set `verified_at`, `full_name`, `date_of_birth` from the
@@ -371,8 +383,9 @@ approve/decline, unban). It derives the status from the attempt history:
   don't count. The 429 also carries `retryAfterSeconds` (and a `Retry-After` header): seconds
   until the oldest counted attempt leaves the 24-hour window. The limit applies only when the
   user has no `pending` attempt to resume (see V2).
-- **V4 — Age:** under 18 on the decision date → `declined`, reason `UNDERAGE`. (T2.1/T2.9 confirm
-  whether Didit returns a Fayda date of birth in the Gregorian or Ethiopian calendar; convert if needed.)
+- **V4 — Age:** under 18 on the decision date (today's date in Africa/Addis_Ababa) → `declined`,
+  reason `UNDERAGE`. Someone born on 29 February turns 18 on 1 March. (T2.9 confirms whether Didit
+  returns a Fayda date of birth in the Gregorian or Ethiopian calendar; convert if needed.)
 - **V5 — Banned identity:** **any** of the attempt's `identity_hashes` matches an active
   (`lifted_at IS NULL`) row in `banned_identities` → attempt `blocked`, user `blocked`. The user
   sees a neutral message.
@@ -382,12 +395,26 @@ approve/decline, unban). It derives the status from the attempt history:
 
   (Later: staff can convert a V6 block into an account move for a user who lost their SIM.)
 - **V7 — Weak duplicate signal:** same normalised `verified_name` + `date_of_birth` as another
-  approved user, with no matching hash (e.g. Fayda then passport) → `manual_review`, not blocked.
-  Name normalisation: lowercase, Latin script, strip punctuation, collapse whitespace; compare the
-  full name. False positives are acceptable since this only triggers review.
+  approved user, with no matching hash (e.g. Fayda then passport) → `manual_review`, not blocked,
+  flagged `POSSIBLE_DUPLICATE`. Name normalisation: NFKD, strip diacritics, lowercase, remove
+  punctuation, collapse whitespace (non-Latin text is kept as is, so it only matches identical
+  text); compare the full name. False positives are acceptable since this only triggers review.
 - **V8 — Missing data:** Didit approved but returned no usable identifier (no number that maps to
   a known `kind`, e.g. an unexpected document type slipped through the workflow), no date of
-  birth, or a passport with no issuing country → `manual_review`.
+  birth, or a passport with no issuing country → `manual_review`, flagged `MISSING_DATA`.
+  Fayda numbers: 12 digits → `fayda_fin`, 16 digits → `fayda_fan` (confirm in T2.9); any other
+  number is ignored, never guessed.
+- **V17 — Consistent documents:** identifiers are collected from **every** document in the
+  decision. If documents disagree on date of birth, or on name after V7 normalisation →
+  `manual_review`, flagged `DOCUMENT_MISMATCH` (a document without a name or date of birth doesn't
+  count as disagreeing).
+- **V18 — Declined document:** if any document in a Didit-approved session has a per-document
+  status other than `Approved` (e.g. `Declined`) → `manual_review`, flagged `DOCUMENT_DECLINED`.
+  An attacker could pair a genuine passport with a fake Fayda card carrying someone else's number;
+  approving that number's hash would later block its real owner through V6. Identifiers from such
+  a document are hashed **only for the V5 and V6 checks** (they can only make us more cautious):
+  they are never stored in `identity_hashes` and never approved, and the document's name and date
+  of birth are not used.
 - **V9 — Locked identity:** once approved, `full_name` and `date_of_birth` cannot change via any
   user endpoint.
 - **V10 — Hashing:** `normalise(number)` is, in this order:
