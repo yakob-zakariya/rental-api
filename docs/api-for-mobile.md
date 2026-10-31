@@ -4,8 +4,10 @@ The contract the Flutter app (`rental-app`) builds against, for Phase 1. Source 
 `docs/phase-1-spec.md` and the running API's Swagger at `/docs`. If this page and the API ever
 disagree, the API wins — report it so this page gets fixed.
 
-- **Base URL:** local `http://localhost:3000` (emulator: `http://10.0.2.2:3000`); on a real phone
-  use the tunnel URL (e.g. `https://<your-domain>.ngrok-free.dev`), or the computer's LAN IP.
+- **Base URL (development, physical phone):** connect the phone by USB, run
+  `adb reverse tcp:3000 tcp:3000` on the computer (again after each reconnect), then use
+  `http://localhost:3000` on the phone. Wireless alternative: the ngrok tunnel URL
+  (e.g. `https://<your-domain>.ngrok-free.dev`).
 - **Format:** JSON in and out (`Content-Type: application/json`). Unknown fields in a body are
   rejected (`400 VALIDATION_FAILED`).
 - **Times:** ISO 8601 in UTC (`2026-10-31T09:12:33.123Z`); show them in Africa/Addis_Ababa.
@@ -149,12 +151,19 @@ VALIDATION_FAILED`. → `200` with the updated profile.
   "canRetry": true,
   "retriesLeftToday": 2,
   "canRequestManualReview": false,
+  "retryAvailableAt": null,
   "reasonCode": "PHOTO_UNCLEAR"
 }
 ```
 - `canRetry`: "Verify" would start or resume a session right now. Show the button only if true.
 - `retriesLeftToday`: new sessions left in the rolling 24 hours (max 3).
 - `canRequestManualReview`: show "Ask for a manual review" only if true.
+- `retryAvailableAt`: ISO UTC timestamp or `null` — always present. Set **only** when the user is
+  out of tries (3 sessions in the rolling 24 hours, nothing to resume): the moment a new session
+  can start. Show it in Africa/Addis_Ababa ("You can try again after 14:30"), offering manual
+  review alongside if `canRequestManualReview`. When that moment passes, re-fetch the status
+  rather than assuming `canRetry` changed. `null` otherwise (including `approved`,
+  `manual_review` and `blocked`).
 - `reasonCode`: only when `status` is `declined`.
 
 | `status` | Screen |

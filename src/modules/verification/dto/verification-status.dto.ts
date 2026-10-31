@@ -27,6 +27,17 @@ export class VerificationStatusDto implements VerificationStatusView {
   })
   canRequestManualReview: boolean;
 
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    example: '2026-11-01T08:15:02.124Z',
+    description:
+      'Only when out of tries (V3 limit, nothing to resume): when the oldest attempt counted ' +
+      'toward the limit leaves the 24-hour window and a new session can start. Otherwise null.',
+  })
+  retryAvailableAt: Date | null;
+
   @ApiPropertyOptional({
     enum: VerificationReasonCode,
     description:

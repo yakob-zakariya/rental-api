@@ -46,6 +46,11 @@ export interface VerificationStatusView {
   canRetry: boolean;
   retriesLeftToday: number;
   canRequestManualReview: boolean;
+  /**
+   * Only at the V3 limit (eligibility `limit`): when the oldest attempt counted toward V3 leaves
+   * the 24-hour window. Null otherwise, including blocked (hard rule 10).
+   */
+  retryAvailableAt: Date | null;
   reasonCode?: VerificationReasonCode;
 }
 
@@ -56,7 +61,12 @@ export interface VerificationStatusView {
 type Eligibility =
   | { kind: 'refused'; status: VerificationStatus }
   | { kind: 'resume'; session: StartedSession }
-  | { kind: 'limit'; manualReviewAvailable: boolean; retryAfterSeconds: number }
+  | {
+      kind: 'limit';
+      manualReviewAvailable: boolean;
+      retryAfterSeconds: number;
+      retryAvailableAt: Date;
+    }
   | { kind: 'create' };
 
 type StartOutcome =
@@ -119,6 +129,7 @@ export class VerificationService {
         canRetry: false,
         retriesLeftToday: 0,
         canRequestManualReview: false,
+        retryAvailableAt: null,
       };
     }
 
@@ -129,6 +140,8 @@ export class VerificationService {
       retriesLeftToday: Math.max(0, MAX_SESSIONS_PER_WINDOW - count),
       canRequestManualReview:
         eligibility.kind === 'limit' && eligibility.manualReviewAvailable,
+      retryAvailableAt:
+        eligibility.kind === 'limit' ? eligibility.retryAvailableAt : null,
     };
     if (status === VerificationStatus.Declined) {
       view.reasonCode = await this.reasonCode(manager, userId);
@@ -210,7 +223,10 @@ export class VerificationService {
     );
     if (recent) return { kind: 'resume', session: recent };
 
-    const { count, retryAfterSeconds } = await this.window(manager, userId);
+    const { count, retryAfterSeconds, retryAvailableAt } = await this.window(
+      manager,
+      userId,
+    );
     if (count >= MAX_SESSIONS_PER_WINDOW) {
       // At the V3 limit, a pending attempt of any age is resumed from what we stored, without
       // calling Didit: a call could create a 4th session if Didit has finished the old one.
@@ -221,6 +237,7 @@ export class VerificationService {
         kind: 'limit',
         manualReviewAvailable: !!latest && isDiditDecline(latest),
         retryAfterSeconds,
+        retryAvailableAt: retryAvailableAt!,
       };
     }
     return { kind: 'create' };
@@ -356,25 +373,35 @@ export class VerificationService {
 
   /**
    * V3's rolling window: sessions created in the last 24 hours (every attempt row counts), and
-   * the seconds until the oldest of them leaves the window.
+   * when the oldest of them leaves it: as seconds from now, and as a moment (rounded up to the
+   * millisecond, so it is never before the attempt really stops counting). Null when none count.
    */
   private async window(
     manager: EntityManager,
     userId: string,
-  ): Promise<{ count: number; retryAfterSeconds: number }> {
+  ): Promise<{
+    count: number;
+    retryAfterSeconds: number;
+    retryAvailableAt: Date | null;
+  }> {
     const [window] = await manager.query<
-      { count: number; retry_after: number | null }[]
+      { count: number; retry_after: number | null; available_at: Date | null }[]
     >(
-      `SELECT count(*)::int AS count,
-              ceil(extract(epoch FROM min(created_at) + make_interval(hours => $2)
-                - clock_timestamp()))::int AS retry_after
-       FROM identity_verifications
-       WHERE user_id = $1 AND created_at > clock_timestamp() - make_interval(hours => $2)`,
+      `SELECT count, ceil(extract(epoch FROM leaves_at - now_at))::int AS retry_after,
+              to_timestamp(ceil(extract(epoch FROM leaves_at) * 1000) / 1000) AS available_at
+       FROM (
+         SELECT count(*)::int AS count,
+                min(created_at) + make_interval(hours => $2) AS leaves_at,
+                clock_timestamp() AS now_at
+         FROM identity_verifications
+         WHERE user_id = $1 AND created_at > clock_timestamp() - make_interval(hours => $2)
+       ) w`,
       [userId, SESSION_WINDOW_HOURS],
     );
     return {
       count: window.count,
       retryAfterSeconds: Math.max(1, window.retry_after ?? 1),
+      retryAvailableAt: window.available_at,
     };
   }
 

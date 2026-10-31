@@ -106,6 +106,21 @@ describe('verification status and manual review (e2e)', () => {
       .recomputeVerificationStatus(userId, db.manager);
   };
 
+  /**
+   * When the oldest attempt V3 counts (created in the last 24 hours) leaves the window, as the
+   * API sends it: ISO in UTC, rounded up to the millisecond.
+   */
+  const oldestCountedLeavesAt = async () => {
+    const [{ at }] = await db.query<{ at: Date }[]>(
+      `SELECT to_timestamp(ceil(extract(epoch FROM min(created_at) + interval '24 hours') * 1000)
+                / 1000) AS at
+       FROM identity_verifications
+       WHERE user_id = $1 AND created_at > clock_timestamp() - interval '24 hours'`,
+      [userId],
+    );
+    return at.toISOString();
+  };
+
   const didit3Declines = () =>
     seed(
       { outcome: 'declined' },
@@ -122,6 +137,7 @@ describe('verification status and manual review (e2e)', () => {
         canRetry: true,
         retriesLeftToday: 3,
         canRequestManualReview: false,
+        retryAvailableAt: null,
       });
     });
 
@@ -133,6 +149,7 @@ describe('verification status and manual review (e2e)', () => {
         canRetry: true,
         retriesLeftToday: 2,
         canRequestManualReview: false,
+        retryAvailableAt: null,
       });
     });
 
@@ -144,6 +161,7 @@ describe('verification status and manual review (e2e)', () => {
         canRetry: true,
         retriesLeftToday: 2,
         canRequestManualReview: false,
+        retryAvailableAt: null,
         reasonCode: 'DOCUMENT_NOT_VERIFIED',
       });
     });
@@ -189,6 +207,7 @@ describe('verification status and manual review (e2e)', () => {
         canRetry: false,
         retriesLeftToday: 0,
         canRequestManualReview: true,
+        retryAvailableAt: await oldestCountedLeavesAt(),
         reasonCode: 'DOCUMENT_NOT_VERIFIED',
       });
     });
@@ -205,6 +224,7 @@ describe('verification status and manual review (e2e)', () => {
         canRetry: true,
         retriesLeftToday: 0,
         canRequestManualReview: false,
+        retryAvailableAt: null,
       });
     });
 
@@ -248,6 +268,7 @@ describe('verification status and manual review (e2e)', () => {
           status: outcome,
           canRetry: false,
           canRequestManualReview: false,
+          retryAvailableAt: null,
         });
         expect(body).not.toHaveProperty('reasonCode');
       },
@@ -264,7 +285,112 @@ describe('verification status and manual review (e2e)', () => {
         canRetry: false,
         retriesLeftToday: 0,
         canRequestManualReview: false,
+        retryAvailableAt: null,
       });
+    });
+
+    describe('retryAvailableAt', () => {
+      const HOUR = 3600_000;
+      const expectAboutHoursFromNow = (iso: string, hours: number) => {
+        const msFromNow = Date.parse(iso) - Date.now();
+        expect(msFromNow).toBeGreaterThan(hours * HOUR - 60_000);
+        expect(msFromNow).toBeLessThan(hours * HOUR + 60_000);
+      };
+
+      it('at the limit: the oldest counted attempt + 24 hours, in UTC', async () => {
+        await seed(
+          { outcome: 'declined', minutesAgo: 600 },
+          { outcome: 'declined', minutesAgo: 300 },
+          { outcome: 'declined', minutesAgo: 100 },
+        );
+        const { body } = await getStatus();
+        const [{ oldest }] = await db.query<{ oldest: Date }[]>(
+          `SELECT min(created_at) AS oldest FROM identity_verifications`,
+        );
+
+        expect(body.retryAvailableAt).toBe(await oldestCountedLeavesAt());
+        expect(body.retryAvailableAt).toMatch(
+          /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/,
+        );
+        const sinceOldest =
+          Date.parse(body.retryAvailableAt) - oldest.getTime();
+        expect(sinceOldest).toBeGreaterThanOrEqual(24 * HOUR);
+        expect(sinceOldest).toBeLessThanOrEqual(24 * HOUR + 1);
+        expectAboutHoursFromNow(body.retryAvailableAt, 14); // the oldest is 10 hours old
+      });
+
+      it('ignores attempts already outside the window', async () => {
+        await seed(
+          { outcome: 'declined', minutesAgo: 30 * 60 },
+          { outcome: 'declined', minutesAgo: 600 },
+          { outcome: 'declined', minutesAgo: 300 },
+          { outcome: 'declined', minutesAgo: 100 },
+        );
+        const { body } = await getStatus();
+
+        // From the 10-hour-old attempt, not the 30-hour-old one.
+        expectAboutHoursFromNow(body.retryAvailableAt, 14);
+        expect(body.retryAvailableAt).toBe(await oldestCountedLeavesAt());
+      });
+
+      it("agrees with the 429's retryAfterSeconds", async () => {
+        await didit3Declines();
+
+        const { body } = await getStatus();
+        const limit = await start().expect(429);
+
+        expect(limit.body.code).toBe('VERIFICATION_RETRY_LIMIT');
+        const secondsFromNow =
+          (Date.parse(body.retryAvailableAt) - Date.now()) / 1000;
+        expect(
+          Math.abs(secondsFromNow - limit.body.retryAfterSeconds),
+        ).toBeLessThanOrEqual(2);
+      });
+
+      it('becomes null once the oldest attempt leaves the window', async () => {
+        await seed(
+          { outcome: 'declined', minutesAgo: 24 * 60 - 5 },
+          { outcome: 'declined', minutesAgo: 30 },
+          { outcome: 'declined', minutesAgo: 20 },
+        );
+        expectAboutHoursFromNow(
+          (await getStatus()).body.retryAvailableAt,
+          5 / 60,
+        );
+
+        await db.query(
+          `UPDATE identity_verifications SET created_at = created_at - interval '10 minutes'
+           WHERE created_at = (SELECT min(created_at) FROM identity_verifications)`,
+        );
+        expect((await getStatus()).body).toMatchObject({
+          canRetry: true,
+          retriesLeftToday: 1,
+          retryAvailableAt: null,
+        });
+      });
+
+      it('is null for a blocked user at the limit (hard rule 10)', async () => {
+        await seed(
+          { outcome: 'declined' },
+          { outcome: 'declined' },
+          { outcome: 'blocked', declineReason: 'BANNED_IDENTITY' },
+        );
+
+        expect((await getStatus()).body.retryAvailableAt).toBeNull();
+      });
+
+      it.each(['approved', 'manual_review'])(
+        'is null for a %s user at the limit',
+        async (outcome) => {
+          await seed(
+            { outcome: 'declined' },
+            { outcome: 'declined' },
+            { outcome },
+          );
+
+          expect((await getStatus()).body.retryAvailableAt).toBeNull();
+        },
+      );
     });
 
     it('requires a signed-in user', async () => {
@@ -329,10 +455,17 @@ describe('verification status and manual review (e2e)', () => {
     it.each(scenarios)('%s', async (_label, attempts) => {
       await seed(...attempts);
 
-      const { canRetry } = (await getStatus()).body as { canRetry: boolean };
-      const { status } = await start();
+      const { canRetry, retryAvailableAt } = (await getStatus()).body as {
+        canRetry: boolean;
+        retryAvailableAt: string | null;
+      };
+      const { status, body } = await start();
 
       expect(status === 201).toBe(canRetry);
+      // Set exactly when POST says "out of tries" (V3), never for other refusals.
+      expect(retryAvailableAt !== null).toBe(
+        status === 429 && body.code === 'VERIFICATION_RETRY_LIMIT',
+      );
     });
   });
 
@@ -347,6 +480,7 @@ describe('verification status and manual review (e2e)', () => {
         canRetry: false,
         retriesLeftToday: 0,
         canRequestManualReview: false,
+        retryAvailableAt: null,
       });
       const rows = await db.query<{ outcome: string; requested: boolean }[]>(
         `SELECT outcome, manual_review_requested_at IS NOT NULL AS requested
