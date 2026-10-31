@@ -85,12 +85,22 @@ export class IdentityVerification {
   })
   documentType: string | null;
 
+  /** The effective name: what Didit returned, or a staff correction (S4). */
   @Column({ name: 'verified_name', type: 'varchar', nullable: true })
   verifiedName: string | null;
 
   // 'YYYY-MM-DD', a string so it never shifts through time zone conversion.
+  /** The effective date of birth: what Didit returned, or a staff correction (S4). */
   @Column({ name: 'date_of_birth', type: 'date', nullable: true })
   dateOfBirth: string | null;
+
+  /** Exactly what Didit returned. Written only by Didit decision processing, never by staff. */
+  @Column({ name: 'provider_verified_name', type: 'varchar', nullable: true })
+  providerVerifiedName: string | null;
+
+  /** Exactly what Didit returned ('YYYY-MM-DD'). Written only by Didit processing, never by staff. */
+  @Column({ name: 'provider_date_of_birth', type: 'date', nullable: true })
+  providerDateOfBirth: string | null;
 
   /** For resuming (V2); null once the outcome is final. */
   @Column({

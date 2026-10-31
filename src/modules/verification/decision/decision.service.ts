@@ -146,9 +146,12 @@ export class DecisionService {
       );
     }
     // The verified name/DOB/type are kept on every evaluated attempt (staff need them for review).
+    // provider_* record exactly what Didit said; only this code writes them (staff corrections
+    // change verified_name / date_of_birth only, S4).
     await manager.query(
       `UPDATE identity_verifications
-       SET verified_name = $2, date_of_birth = $3, document_type = $4
+       SET verified_name = $2, date_of_birth = $3, document_type = $4,
+           provider_verified_name = $2, provider_date_of_birth = $3
        WHERE id = $1`,
       [
         attempt.id,
@@ -344,10 +347,7 @@ export class DecisionService {
    * date_of_birth from their approved attempt (once). If not, clear verified_at but keep the
    * name and date of birth as history (V15).
    */
-  private async syncUser(
-    manager: EntityManager,
-    userId: string,
-  ): Promise<void> {
+  async syncUser(manager: EntityManager, userId: string): Promise<void> {
     const status = await this.status.recomputeVerificationStatus(
       userId,
       manager,

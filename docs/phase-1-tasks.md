@@ -94,7 +94,7 @@ Tick each box when it's merged and you've understood the code.
       S3 tests. Add foreign keys from identity_verifications.decided_by_admin_id,
       banned_identities.banned_by_admin_id and banned_identities.lifted_by_admin_id
       to admin_users.
-- [ ] **T3.2 Audit log.** `admin_actions` entity + a small service every admin action calls (S1).
+- [x] **T3.2 Audit log.** `admin_actions` entity + a small service every admin action calls (S1).
 - [ ] **T3.3 Verification queue + approve/decline.** Including manual entry of document data and
       re-running V4–V6 on approve (S4); tests.
 - [ ] **T3.4 Ban / unban.** Token revocation, copying hashes into `banned_identities`, lifting and

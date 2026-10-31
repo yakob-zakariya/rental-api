@@ -29,7 +29,15 @@ export interface StartedSession {
 export enum VerificationReasonCode {
   Underage = 'UNDERAGE',
   DocumentNotVerified = 'DOCUMENT_NOT_VERIFIED',
+  // Set by staff when declining (T3.3):
+  PhotoUnclear = 'PHOTO_UNCLEAR',
+  DocumentExpired = 'DOCUMENT_EXPIRED',
+  DocumentNotAccepted = 'DOCUMENT_NOT_ACCEPTED',
 }
+
+const USER_SAFE_REASONS = new Set<string>(
+  Object.values(VerificationReasonCode),
+);
 
 /** GET /verification/status (spec §4 flow step 6). */
 export interface VerificationStatusView {
@@ -395,9 +403,10 @@ export class VerificationService {
        ORDER BY created_at DESC, id DESC LIMIT 1`,
       [userId],
     );
-    // Only our own reasons are specific; Didit's warnings aren't mapped yet (after T2.9).
-    return row?.decline_reason === 'UNDERAGE'
-      ? VerificationReasonCode.Underage
+    // Our own and staff reasons are user-safe as they are; anything else (e.g. DIDIT_DECLINED) is
+    // generic. Didit's warnings aren't mapped yet (after T2.9).
+    return row?.decline_reason && USER_SAFE_REASONS.has(row.decline_reason)
+      ? (row.decline_reason as VerificationReasonCode)
       : VerificationReasonCode.DocumentNotVerified;
   }
 

@@ -1,5 +1,8 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AdminModule } from '../admin/admin.module.js';
+import { VerificationReviewController } from './admin/verification-review.controller.js';
+import { VerificationReviewService } from './admin/verification-review.service.js';
 import { DecisionProcessor } from './decision/decision.processor.js';
 import { DecisionService } from './decision/decision.service.js';
 import { DiditEventProcessor } from './didit/didit-event-processor.js';
@@ -26,14 +29,21 @@ import { VerificationStatusService } from './verification-status.service.js';
       BannedIdentity,
     ]),
     DiditModule,
+    // Admin guards and the audit service for the staff review routes.
+    AdminModule,
   ],
-  controllers: [VerificationController, WebhookController],
+  controllers: [
+    VerificationController,
+    WebhookController,
+    VerificationReviewController,
+  ],
   providers: [
     IdentityHasher,
     VerificationStatusService,
     VerificationService,
     WebhookService,
     DecisionService,
+    VerificationReviewService,
     VerificationPollingService,
     VerificationPollingJob,
     { provide: DiditEventProcessor, useClass: DecisionProcessor },

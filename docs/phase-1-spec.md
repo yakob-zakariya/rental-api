@@ -119,8 +119,10 @@ All IDs are UUIDs; all timestamps are `timestamptz`.
 | outcome | enum `pending`,`approved`,`declined`,`manual_review`,`blocked`,`abandoned`,`expired` | Our decision |
 | decline_reason | varchar null | Internal reason code |
 | document_type | varchar null | e.g. national ID, passport |
-| verified_name | varchar null | |
-| date_of_birth | date null | |
+| verified_name | varchar null | Effective name: Didit's, or a staff correction (S4) |
+| date_of_birth | date null | Effective date of birth: Didit's, or a staff correction (S4) |
+| provider_verified_name | varchar null | Exactly what Didit returned; written only by Didit decision processing, never by staff |
+| provider_date_of_birth | date null | Exactly what Didit returned; written only by Didit decision processing, never by staff |
 | verification_url | varchar null | So V2 can resume the session; cleared on a final outcome |
 | session_token | varchar null | So V2 can resume the session; cleared on a final outcome |
 | manual_review_requested_at | timestamptz null | Set when the user requests manual review on this attempt |
@@ -338,8 +340,9 @@ banned again after being lifted).
      never disagree.
    - `retriesLeftToday`: `3 −` sessions created in the rolling 24 hours (V3), never below 0.
    - `canRequestManualReview`: the manual review request (step 7) would be accepted now.
-   - `reasonCode` (user-safe), only when `status = declined`: `UNDERAGE` (V4) or
-     `DOCUMENT_NOT_VERIFIED` (any Didit decline). Specific codes from Didit's warnings (e.g.
+   - `reasonCode` (user-safe), only when `status = declined`: `UNDERAGE` (V4), the staff decline
+     code (`PHOTO_UNCLEAR`, `DOCUMENT_EXPIRED`, `DOCUMENT_NOT_ACCEPTED`, `DOCUMENT_NOT_VERIFIED`,
+     `UNDERAGE`), or `DOCUMENT_NOT_VERIFIED` (any Didit decline). Specific codes from Didit's warnings (e.g.
      `PHOTO_UNCLEAR`, `DOCUMENT_EXPIRED`) come after T2.9 shows real declines.
    - Never reveal blocking reasons: a `blocked` user gets `status: blocked`, `canRetry: false`,
      `retriesLeftToday: 0`, `canRequestManualReview: false` and no `reasonCode`. `manual_review`
@@ -503,14 +506,21 @@ token when loading the page, so the page is protected separately, e.g. HTTP Basi
 
 ### Endpoints
 - `POST /admin/auth/login { email, password }` → admin access token (`ADMIN_JWT_SECRET`).
-- `GET /admin/verifications?status=manual_review|blocked&flagged=true` — queue, oldest first. Shows
-  user phone, attempt history, flag reason, Didit session IDs (staff open images in the Didit
-  console, never in our system).
+- `GET /admin/verifications?status=manual_review,blocked&flagged=true&includeDecided=false&limit=&after=`
+  — queue, oldest first (any staff role); by default undecided `manual_review` + `blocked`. Shows
+  user phone, flag reason, Didit session IDs (staff open images in the Didit console, never in our
+  system). Paged with a composite (`created_at`, `id`) cursor.
+- `GET /admin/verifications/:attemptId` — one attempt: Didit's name and date of birth
+  (`provider*`) beside the effective ones, the identity *kinds* stored (never hashes or numbers),
+  and the user's attempt history, newest first.
 - `POST /admin/verifications/:attemptId/approve { note, documentType?, idNumber?, issuingCountry?, dateOfBirth?, fullName? }`
   — moderator+. See S4.
-- `POST /admin/verifications/:attemptId/decline { reasonCode, note }` — moderator+. Sets the
-  attempt `declined` (final, staff decision) and recomputes, so the user goes back to `declined`
-  and normal retry rules apply.
+- `POST /admin/verifications/:attemptId/decline { reasonCode, note }` — moderator+. Only a
+  `manual_review` attempt (declining a `blocked` one would quietly unblock the user). Sets the
+  attempt `declined` (final, staff decision, `decline_reason = reasonCode`) and recomputes, so the
+  user goes back to `declined` and normal retry rules apply. `reasonCode` is one of
+  `PHOTO_UNCLEAR`, `DOCUMENT_EXPIRED`, `DOCUMENT_NOT_ACCEPTED`, `DOCUMENT_NOT_VERIFIED`,
+  `UNDERAGE`; it is user-safe and shown as the user's `reasonCode`. `note` is required (1–1000).
 - `POST /admin/users/:userId/ban { reason }` — moderator+. See S5.
 - `POST /admin/users/:userId/unban { note }` — super_admin only. See S5.
 - `GET /admin/actions?targetId=&adminId=&action=&limit=&before=` — audit log, newest first (any staff
@@ -547,6 +557,22 @@ token when loading the page, so the page is protected separately, e.g. HTTP Basi
   is normalised and hashed into `identity_hashes` immediately and never stored raw (not in
   `admin_actions` either). Then V4–V6 run again; a failure rejects the approval with its error code.
   On success the attempt becomes `approved` with `decided_by_admin_id` set, and the user is recomputed.
+  - Only `manual_review` or `blocked` attempts can be approved, and never twice (409
+    `ALREADY_DECIDED`; other outcomes 409 `ATTEMPT_NOT_REVIEWABLE`). A `blocked` attempt can't be
+    approved while the user has **other** blocked attempts (409 `OTHER_BLOCKED_ATTEMPTS`: the
+    recompute would keep them blocked).
+  - **An idNumber may only be entered when the attempt has no identity hash from Didit** (the V8
+    case); otherwise 409 `IDENTIFIER_ALREADY_PRESENT`. This stops staff attaching someone else's
+    number to an account, which would later block the real owner via V6. Formats: `fayda_fin` 12
+    digits, `fayda_fan` 16 digits (after V10 normalisation), `passport` 5–20 letters/digits plus
+    `issuingCountry` (alpha-3); anything else 400 `INVALID_ID_NUMBER` (the number is never echoed).
+  - Entered `dateOfBirth` / `fullName` change only the effective `date_of_birth` / `verified_name`;
+    **what Didit returned is never overwritten** (`provider_*`).
+  - Without an identity hash, a date of birth and a name afterwards: 400 `MISSING_IDENTITY_DATA`
+    with `missing: [...]`. Re-run failures: 409 `BANNED_IDENTITY` (V5), `DUPLICATE_IDENTITY` (V6,
+    also under a race), `UNDERAGE` (V4); nothing changes.
+  - `note` is required; the audit row's `enteredFields` lists the field names staff entered.
+  - Flags stay on the attempt as history.
 - **S5 — Ban / unban:**
   - Ban sets `users.status = banned`, revokes all refresh tokens, and copies every hash of the
     user's approved attempt into `banned_identities`. A user with no approved attempt is only set
