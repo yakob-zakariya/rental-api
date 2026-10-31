@@ -34,6 +34,7 @@ Restart `start:dev` after editing `.env`.
 | 7 | `PATCH /me` `{ "preferredLanguage": "en", "fullName": "x" }` | 400 `VALIDATION_FAILED` (V9) |
 | 8 | `POST /verification/sessions` | 201 `{ verificationUrl, sessionToken }`; open the URL to see Didit's flow |
 | 9 | `POST /verification/sessions` again (within 30 min) | 201, the same URL (V2 resume) |
+| 9a | `GET /verification/status` | `status: "pending"`, `canRetry: true`, `retriesLeftToday: 2`, `canRequestManualReview: false` |
 | 10 | `POST /auth/refresh` `{ "refreshToken": "<refresh>" }` | 200, a new pair |
 | 11 | Repeat step 10 with the **old** refresh token, within 60 s | 200 (A5 grace for a lost response) |
 | 12 | Repeat step 10 with the old token after the replacement was used | 401 `INVALID_REFRESH_TOKEN`, and every session of the user is revoked (A5) |
@@ -87,6 +88,9 @@ Runs every 5 minutes when `JOBS_ENABLED=true` (the default in `.env`).
 | `GET /me` 15+ minutes after sign-in | 401 `ACCESS_TOKEN_EXPIRED` → refresh |
 | A refresh token pasted as the access token | 401 `UNAUTHENTICATED` |
 | An unknown field in any body | 400 `VALIDATION_FAILED` |
+| Three Didit declines in 24 h (finish three flows that Didit declines; or seed them in the dev DB), then `GET /verification/status` | `canRetry: false`, `retriesLeftToday: 0`, `canRequestManualReview: true`, `reasonCode: "DOCUMENT_NOT_VERIFIED"` |
+| Then `POST /verification/manual-review-request` | 200, `status: "manual_review"`; a second request → 409 `VERIFICATION_IN_REVIEW`; starting a session → 409 `VERIFICATION_IN_REVIEW` |
+| `POST /verification/manual-review-request` below the limit | 409 `MANUAL_REVIEW_NOT_AVAILABLE` |
 
 ## Useful while testing
 
