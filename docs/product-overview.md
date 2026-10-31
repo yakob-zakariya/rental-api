@@ -216,6 +216,7 @@ Things that are fine for local development but must be settled before (or when) 
 - **Verification start holds a DB connection during the Didit call (up to 10 s); review pool size and
   consider moving the Didit call outside the transaction before traffic grows.**
 - **Add two-factor authentication (TOTP) for staff accounts before production.**
+- **The production DB user must not have TRUNCATE (or UPDATE/DELETE) on admin_actions.**
 - **Test the production /docs HTTP Basic login end to end once a real SMS provider allows
   NODE_ENV=production.**
 - **Swagger in production.** Off unless `SWAGGER_ENABLED=true`; if enabled, the `/docs` page must

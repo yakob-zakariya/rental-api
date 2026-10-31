@@ -89,7 +89,7 @@ Tick each box when it's merged and you've understood the code.
 
 ## Step 3 — Staff side
 
-- [ ] **T3.1 Admin users + auth.** `admin_users` entity, separate JWT, `@Roles()` + `RolesGuard`,
+- [x] **T3.1 Admin users + auth.** `admin_users` entity, separate JWT, `@Roles()` + `RolesGuard`,
       CLI/seed to create the first `super_admin`, admin auth in front of `/docs` in production;
       S3 tests. Add foreign keys from identity_verifications.decided_by_admin_id,
       banned_identities.banned_by_admin_id and banned_identities.lifted_by_admin_id

@@ -121,6 +121,9 @@ Runs every 5 minutes when `JOBS_ENABLED=true` (the default in `.env`).
 | More than 10 logins from one IP in 15 minutes | 429 `RATE_LIMITED` |
 | The admin token on `GET /me`, or an app token on `GET /admin/auth/me` | 401 `UNAUTHENTICATED` (S3) |
 | `UPDATE admin_users SET is_active = false …`, then `GET /admin/auth/me` | 401 at once |
+| `GET /admin/actions` (any staff role) | newest first, your `admin.login` rows included; `?limit=2` then `?before=<nextCursor>` pages on |
+| `GET /admin/actions?targetId=<uuid>` | only actions on that target |
+| In psql: `UPDATE admin_actions SET details = '{}';` or `DELETE FROM admin_actions;` | rejected: `admin_actions is append-only` |
 
 ## Worth trying on purpose
 

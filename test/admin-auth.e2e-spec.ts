@@ -467,6 +467,7 @@ describe('staff auth (e2e)', () => {
     );
 
     expect(rows.map((r) => r.conname)).toEqual([
+      'FK_admin_actions_admin_id',
       'FK_banned_identities_banned_by_admin_id',
       'FK_banned_identities_lifted_by_admin_id',
       'FK_identity_verifications_decided_by_admin_id',

@@ -1,11 +1,13 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { durationToSeconds } from '../../common/duration.js';
 import type { EnvironmentVariables } from '../../config/env.validation.js';
-import { AdminLoginLimiter } from './admin-login-limiter.js';
+import { AdminLoginLimiter, hashEmail } from './admin-login-limiter.js';
+import { AdminActionType, AuditTargetType } from './audit/audit.enums.js';
+import { AuditService } from './audit/audit.service.js';
 import { AdminUser } from './admin-user.entity.js';
 import { dummyPasswordHash, verifyPassword } from './password.js';
 
@@ -26,6 +28,7 @@ const invalidCredentials = () =>
 
 @Injectable()
 export class AdminAuthService {
+  private readonly logger = new Logger('AdminAuth');
   private readonly secret: string;
   private readonly ttlSeconds: number;
 
@@ -33,6 +36,8 @@ export class AdminAuthService {
     @InjectRepository(AdminUser) private readonly admins: Repository<AdminUser>,
     private readonly jwt: JwtService,
     private readonly limiter: AdminLoginLimiter,
+    private readonly audit: AuditService,
+    private readonly dataSource: DataSource,
     config: ConfigService<EnvironmentVariables, true>,
   ) {
     this.secret = config.get('ADMIN_JWT_SECRET', { infer: true });
@@ -46,7 +51,20 @@ export class AdminAuthService {
     const admin = await this.checkCredentials(email, password);
     if (!admin) throw invalidCredentials();
 
-    await this.admins.update({ id: admin.id }, { lastLoginAt: new Date() });
+    // last_login_at and the admin.login audit row commit together (S1).
+    await this.dataSource.transaction(async (manager) => {
+      await manager.update(
+        AdminUser,
+        { id: admin.id },
+        { lastLoginAt: new Date() },
+      );
+      await this.audit.record(manager, {
+        adminId: admin.id,
+        action: AdminActionType.AdminLogin,
+        targetType: AuditTargetType.AdminUser,
+        targetId: admin.id,
+      });
+    });
     const accessToken = await this.jwt.signAsync(
       { sub: admin.id, typ: ADMIN_TOKEN_TYPE },
       {
@@ -70,7 +88,10 @@ export class AdminAuthService {
   ): Promise<AdminUser | null> {
     const email = normaliseEmail(rawEmail);
     // Limited: refuse without checking the password, so a guess can't be confirmed meanwhile.
-    if (await this.limiter.isLimited(email)) return null;
+    if (await this.limiter.isLimited(email)) {
+      this.logFailure(email, 'too many failed attempts');
+      return null;
+    }
 
     const admin = await this.admins.findOneBy({ email });
     const valid = await verifyPassword(
@@ -79,12 +100,19 @@ export class AdminAuthService {
     );
     if (!admin || !valid || !admin.isActive) {
       await this.limiter.recordFailure(email);
+      this.logFailure(email, 'invalid credentials');
       return null;
     }
     await this.limiter.reset(email);
     return admin;
   }
 
+  /** Failed staff logins are logged with the hashed email only — never the address or password. */
+  private logFailure(email: string, reason: string): void {
+    this.logger.warn(
+      `Failed staff login (email sha256 ${hashEmail(email).slice(0, 16)}): ${reason}`,
+    );
+  }
   /** For AdminAuthGuard: only staff access tokens signed with ADMIN_JWT_SECRET pass. */
   async verifyAccessToken(
     token: string,
