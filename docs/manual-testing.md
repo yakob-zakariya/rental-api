@@ -21,6 +21,32 @@ every new endpoint gets a step here.
 
 Restart `start:dev` after editing `.env`.
 
+## How to use the Postman collection
+
+The same journey as below, ready to click through: `docs/postman/`.
+
+1. In Postman: **Import** → select both `rental-api.postman_collection.json` and
+   `local.postman_environment.json`. Choose the **rental-api local** environment (top right).
+2. Run the folders in order: **1. Health → 2. Auth → 3. Me → 4. Verification**, then
+   **5. Expected failures**.
+3. After **OTP request**, copy the 6-digit code from the `npm run start:dev` terminal into the
+   environment variable `otpCode`, then send **OTP verify**. It saves `accessToken` and
+   `refreshToken` into the environment; every protected request sends `Bearer {{accessToken}}`,
+   and **Refresh** keeps both up to date. **Logout** clears `refreshToken`.
+4. Each request's description says what to expect; its **Tests** tab checks the status (and the
+   error `code` for the expected failures).
+
+Notes:
+- `phone` in the environment is a sample number (`0911234567`); use your own if you like (codes
+  only go to the console until a real SMS provider exists).
+- Access tokens expire after 15 minutes (401 `ACCESS_TOKEN_EXPIRED`): send **Refresh**.
+- At most 3 OTP requests per phone per 10 minutes (A3); the failures folder uses one
+  ("Fresh OTP code").
+- **Start session** needs the sandbox Didit values in `.env`; otherwise it returns 503.
+- The webhook isn't in the collection: Didit signs it, so it can't be sent by hand (see
+  "Webhooks" below).
+- Never save real tokens back into the exported files: they're committed to git.
+
 ## Walkthrough
 
 | # | Request | Expect |
