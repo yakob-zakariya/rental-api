@@ -7,6 +7,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { isAdminRoute } from '../../../common/decorators/admin-route.decorator.js';
 import type { AuthRequest } from '../../../common/auth-request.js';
 import { User } from '../../users/user.entity.js';
 import { UserStatus } from '../../users/user.enums.js';
@@ -25,7 +26,13 @@ export class ActiveAccountGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    if (isPublic(this.reflector, context)) return true;
+    // Staff routes use the admin guards instead (S3); public routes need no token.
+    if (
+      isPublic(this.reflector, context) ||
+      isAdminRoute(this.reflector, context)
+    ) {
+      return true;
+    }
 
     const request = context.switchToHttp().getRequest<AuthRequest>();
     // JwtAuthGuard runs first; without it there is no signed-in user to check.

@@ -7,6 +7,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
+import { AdminUser } from '../../admin/admin-user.entity.js';
 import { User } from '../../users/user.entity.js';
 import { IdentityKind } from '../verification.enums.js';
 
@@ -43,15 +44,28 @@ export class BannedIdentity {
   @Column({ type: 'varchar', length: 255 })
   reason: string;
 
-  // References admin_users once that table exists; the foreign keys are added in T3.1.
   @Column({ name: 'banned_by_admin_id', type: 'uuid' })
   bannedByAdminId: string;
+
+  @ManyToOne(() => AdminUser)
+  @JoinColumn({
+    name: 'banned_by_admin_id',
+    foreignKeyConstraintName: 'FK_banned_identities_banned_by_admin_id',
+  })
+  bannedByAdmin?: AdminUser;
 
   @Column({ name: 'lifted_at', type: 'timestamptz', nullable: true })
   liftedAt: Date | null;
 
   @Column({ name: 'lifted_by_admin_id', type: 'uuid', nullable: true })
   liftedByAdminId: string | null;
+
+  @ManyToOne(() => AdminUser)
+  @JoinColumn({
+    name: 'lifted_by_admin_id',
+    foreignKeyConstraintName: 'FK_banned_identities_lifted_by_admin_id',
+  })
+  liftedByAdmin?: AdminUser;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

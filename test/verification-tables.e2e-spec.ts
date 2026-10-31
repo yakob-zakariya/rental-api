@@ -1,13 +1,15 @@
 import { INestApplication } from '@nestjs/common';
 import type { App } from 'supertest/types.js';
 import { DataSource, QueryFailedError } from 'typeorm';
+import { insertTestAdmin } from './utils/admins.js';
 import { createTestApp, resetDatabase } from './utils/create-test-app.js';
 
 // Database-level rules for the verification tables (T2.2). Raw SQL on purpose: these test the
 // schema, not any service.
 const HASH_A = 'a'.repeat(64);
 const HASH_B = 'b'.repeat(64);
-const ADMIN_ID = '00000000-0000-4000-8000-000000000001';
+// A real admin row, created before each test (the admin id columns are foreign keys).
+let ADMIN_ID: string;
 
 describe('verification tables (e2e)', () => {
   let app: INestApplication<App>;
@@ -17,6 +19,10 @@ describe('verification tables (e2e)', () => {
   beforeAll(async () => {
     app = await createTestApp();
     db = app.get(DataSource);
+  });
+
+  beforeEach(async () => {
+    ADMIN_ID = await insertTestAdmin(db);
   });
 
   afterEach(async () => {
@@ -157,16 +163,20 @@ describe('verification tables (e2e)', () => {
       ).toBe('CHK_identity_verifications_resume_only_pending');
     });
 
+    // Columns are built when each test runs: ADMIN_ID only exists after beforeEach.
     it.each([
       [
         'decided_by_admin_id without decided_at',
-        { decided_by_admin_id: ADMIN_ID },
+        () => ({ decided_by_admin_id: ADMIN_ID }),
       ],
-      ['decided_at without decided_by_admin_id', { decided_at: new Date() }],
+      [
+        'decided_at without decided_by_admin_id',
+        () => ({ decided_at: new Date() }),
+      ],
     ])('rejects %s', async (_label, columns) => {
       const userId = await createUser('+251911000001');
 
-      expect(await constraintOf(createAttempt(userId, columns))).toBe(
+      expect(await constraintOf(createAttempt(userId, columns()))).toBe(
         'CHK_identity_verifications_decided_pair',
       );
     });

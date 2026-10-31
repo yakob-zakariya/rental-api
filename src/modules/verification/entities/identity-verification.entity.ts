@@ -10,6 +10,7 @@ import {
   Unique,
   UpdateDateColumn,
 } from 'typeorm';
+import { AdminUser } from '../../admin/admin-user.entity.js';
 import { User } from '../../users/user.entity.js';
 import { VerificationOutcome } from '../verification.enums.js';
 
@@ -123,9 +124,15 @@ export class IdentityVerification {
   @Column({ name: 'flag_reason', type: 'varchar', length: 64, nullable: true })
   flagReason: string | null;
 
-  // References admin_users once that table exists; the foreign key is added in T3.1.
   @Column({ name: 'decided_by_admin_id', type: 'uuid', nullable: true })
   decidedByAdminId: string | null;
+
+  @ManyToOne(() => AdminUser)
+  @JoinColumn({
+    name: 'decided_by_admin_id',
+    foreignKeyConstraintName: 'FK_identity_verifications_decided_by_admin_id',
+  })
+  decidedByAdmin?: AdminUser;
 
   @Column({ name: 'decided_at', type: 'timestamptz', nullable: true })
   decidedAt: Date | null;

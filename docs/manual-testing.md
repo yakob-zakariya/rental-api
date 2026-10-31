@@ -45,7 +45,9 @@ Notes:
 - **Start session** needs the sandbox Didit values in `.env`; otherwise it returns 503.
 - The webhook isn't in the collection: Didit signs it, so it can't be sent by hand (see
   "Webhooks" below).
-- Never save real tokens back into the exported files: they're committed to git.
+- **6. Admin:** set `adminEmail`/`adminPassword` (from `npm run admin:create`), then **Admin login**
+  saves `adminToken`; admin requests use it instead of the app token.
+- Never save real tokens or passwords back into the exported files: they're committed to git.
 
 ## Walkthrough
 
@@ -102,6 +104,23 @@ Runs every 5 minutes when `JOBS_ENABLED=true` (the default in `.env`).
    `[VerificationPolling] Pass: 1 polled, …` and `/me` shows the outcome.
 3. Attempts still pending 24 h after `pending_since` are expired; a session Didit no longer knows
    (404) is expired at once with `provider_status = 'NOT_FOUND'`.
+
+## Staff (admin) sign-in
+
+1. Create your staff account once: `npm run admin:create -- --email you@example.com`
+   (role defaults to `super_admin`; the password is asked for twice, hidden, at least 12 characters).
+2. `POST /admin/auth/login` `{ "email": "you@example.com", "password": "…" }` → 200
+   `{ accessToken, accessTokenExpiresIn: 28800 }` (8 hours, no refresh: sign in again).
+3. In Swagger, **Authorize** → paste it into **admin** (not app). `GET /admin/auth/me` → your
+   `{ id, email, role }`.
+
+| Try | Expect |
+| --- | --- |
+| Wrong password, unknown email, or a deactivated account | the same 401 `INVALID_CREDENTIALS` |
+| 10 wrong passwords for one email, then the right one | still 401 `INVALID_CREDENTIALS` for 15 minutes (per-email limit in Redis) |
+| More than 10 logins from one IP in 15 minutes | 429 `RATE_LIMITED` |
+| The admin token on `GET /me`, or an app token on `GET /admin/auth/me` | 401 `UNAUTHENTICATED` (S3) |
+| `UPDATE admin_users SET is_active = false …`, then `GET /admin/auth/me` | 401 at once |
 
 ## Worth trying on purpose
 

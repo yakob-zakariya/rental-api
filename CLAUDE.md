@@ -74,6 +74,7 @@ npm run migration:create -- src/database/migrations/<Name>     # empty, for hand
 npm run migration:run
 npm run migration:revert
 npm run migration:show
+npm run admin:create -- --email <email> [--role super_admin]   # staff account; password prompted (or ADMIN_PASSWORD)
 ```
 
 ## Hard rules — never break these
