@@ -388,7 +388,7 @@
                 "status"
               ]
             },
-            "description": "200 `{ status, canRetry, retriesLeftToday, canRequestManualReview, reasonCode? }`."
+            "description": "200 `{ status, canRetry, retriesLeftToday, canRequestManualReview, retryAvailableAt, reasonCode? }`. `retryAvailableAt` is an ISO UTC timestamp only when out of tries (3 sessions in 24 h, nothing to resume): when a new session can start. Otherwise `null`."
           },
           "response": [],
           "event": [

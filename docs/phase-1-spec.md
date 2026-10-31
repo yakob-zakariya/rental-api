@@ -334,18 +334,26 @@ banned again after being lifted).
    `expired` attempts are not polled. This makes webhooks a speed-up, not a single point of
    failure.
 6. **Status:** `GET /verification/status` →
-   `{ status, canRetry, retriesLeftToday, canRequestManualReview, reasonCode? }`.
+   `{ status, canRetry, retriesLeftToday, canRequestManualReview, retryAvailableAt, reasonCode? }`.
    - `canRetry`: `POST /verification/sessions` would start **or resume** a session right now. It
      comes from the same eligibility check that endpoint uses (V1, V13, V2, V3), so the two can
      never disagree.
    - `retriesLeftToday`: `3 −` sessions created in the rolling 24 hours (V3), never below 0.
    - `canRequestManualReview`: the manual review request (step 7) would be accepted now.
+   - `retryAvailableAt`: ISO 8601 UTC timestamp, or `null`. Set **only** when the same
+     eligibility check says the user is at the V3 limit with nothing to resume (the case where
+     `POST /verification/sessions` returns 429 `VERIFICATION_RETRY_LIMIT`): the moment the oldest
+     attempt counted toward V3 (created in the last 24 hours) leaves the window, i.e. its
+     `created_at + 24 h`, rounded up to the millisecond. It matches that 429's
+     `retryAfterSeconds`. `null` in every other case, including a resumable pending attempt at
+     the limit and `approved` / `manual_review` / `blocked`.
    - `reasonCode` (user-safe), only when `status = declined`: `UNDERAGE` (V4), the staff decline
      code (`PHOTO_UNCLEAR`, `DOCUMENT_EXPIRED`, `DOCUMENT_NOT_ACCEPTED`, `DOCUMENT_NOT_VERIFIED`,
      `UNDERAGE`), or `DOCUMENT_NOT_VERIFIED` (any Didit decline). Specific codes from Didit's warnings (e.g.
      `PHOTO_UNCLEAR`, `DOCUMENT_EXPIRED`) come after T2.9 shows real declines.
    - Never reveal blocking reasons: a `blocked` user gets `status: blocked`, `canRetry: false`,
-     `retriesLeftToday: 0`, `canRequestManualReview: false` and no `reasonCode`. `manual_review`
+     `retriesLeftToday: 0`, `canRequestManualReview: false`, `retryAvailableAt: null` and no
+     `reasonCode`. `manual_review`
      has no `reasonCode` either.
 7. **Manual review request:** `POST /verification/manual-review-request` (no body) — allowed only
    when the V3 limit is reached **and** the most recent attempt was declined **by Didit**
