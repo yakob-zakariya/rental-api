@@ -513,11 +513,20 @@ token when loading the page, so the page is protected separately, e.g. HTTP Basi
   and normal retry rules apply.
 - `POST /admin/users/:userId/ban { reason }` — moderator+. See S5.
 - `POST /admin/users/:userId/unban { note }` — super_admin only. See S5.
-- `GET /admin/actions?targetId=` — audit log.
+- `GET /admin/actions?targetId=&adminId=&action=&limit=&before=` — audit log, newest first (any staff
+  role); `limit` default 50, max 200; `before` is the previous page's `nextCursor`, a composite
+  (`created_at`, `id`) cursor so actions with the same timestamp page correctly.
 - A CLI command or seed script creates the first `super_admin` (never an open endpoint).
 
 ### Rules
-- **S1** Every endpoint above that changes data writes to `admin_actions`.
+- **S1** Every endpoint above that changes data writes to `admin_actions`, **in the same
+  transaction** as the change (both commit or neither does). Successful staff logins are recorded
+  too (`admin.login`); failed logins are only logged at warn level, with the hashed email, never
+  the address or password. The table is **append-only**: a trigger rejects UPDATE and DELETE.
+  `details` allows only `reason`, `note`, `reasonCode`, `enteredFields` (field *names*, never
+  values), `previousOutcome`, `newOutcome`. Free text that looks like an ID number is rejected
+  with 400 `NOTE_CONTAINS_ID_NUMBER`: after NFKC, 9+ consecutive digits (spaces and dashes
+  removed), or 1–2 letters followed by 6+ digits (passport-like, e.g. `EP1234567`).
 - **S2** `support` can read everything here but change nothing. Roles are minimum levels
   (support < moderator < super_admin), and admin routes **fail closed**: a route without an
   explicit `@Roles` needs any staff role for a read (GET/HEAD) and `moderator` for anything else.

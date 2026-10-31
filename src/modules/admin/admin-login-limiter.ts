@@ -33,7 +33,11 @@ export class AdminLoginLimiter {
   }
 }
 
-/** The email is hashed so Redis never holds staff email addresses. */
+/** SHA-256 of a (normalised) staff email: Redis keys and logs never hold the address itself. */
+export function hashEmail(email: string): string {
+  return createHash('sha256').update(email).digest('hex');
+}
+
 function keyOf(email: string): string {
-  return `admin-login-failures:${createHash('sha256').update(email).digest('hex')}`;
+  return `admin-login-failures:${hashEmail(email)}`;
 }
