@@ -1,5 +1,10 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import {
+  cursorTimestampSql,
+  decodeCursor,
+  encodeCursor,
+} from '../pagination.js';
 import {
   type AdminActionPageDto,
   DEFAULT_PAGE_SIZE,
@@ -18,8 +23,6 @@ interface Row {
   admin_id: string;
   admin_email: string;
 }
-
-const invalidCursor = () => new BadRequestException({ code: 'INVALID_CURSOR' });
 
 /** GET /admin/actions: the audit log, newest first, paged by a (created_at, id) cursor. */
 @Injectable()
@@ -50,7 +53,7 @@ export class AdminActionsService {
     params.push(limit + 1);
     const rows = await this.dataSource.query<Row[]>(
       `SELECT a.id, a.action, a.target_type, a.target_id, a.details, a.created_at,
-              to_char(a.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_ts,
+              ${cursorTimestampSql('a.created_at')} AS cursor_ts,
               u.id AS admin_id, u.email AS admin_email
        FROM admin_actions a JOIN admin_users u ON u.id = a.admin_id
        ${where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''}
@@ -77,29 +80,4 @@ export class AdminActionsService {
           : null,
     };
   }
-}
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/;
-
-/** Opaque to clients: base64url of "<created_at with microseconds>|<id>". */
-export function encodeCursor(createdAt: string, id: string): string {
-  return Buffer.from(`${createdAt}|${id}`).toString('base64url');
-}
-
-export function decodeCursor(cursor: string): {
-  createdAt: string;
-  id: string;
-} {
-  const [createdAt, id, ...rest] = Buffer.from(cursor, 'base64url')
-    .toString('utf8')
-    .split('|');
-  if (
-    rest.length > 0 ||
-    !TIMESTAMP.test(createdAt ?? '') ||
-    !UUID.test(id ?? '')
-  ) {
-    throw invalidCursor();
-  }
-  return { createdAt, id };
 }

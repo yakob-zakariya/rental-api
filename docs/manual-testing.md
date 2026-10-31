@@ -125,6 +125,20 @@ Runs every 5 minutes when `JOBS_ENABLED=true` (the default in `.env`).
 | `GET /admin/actions?targetId=<uuid>` | only actions on that target |
 | In psql: `UPDATE admin_actions SET details = '{}';` or `DELETE FROM admin_actions;` | rejected: `admin_actions is append-only` |
 
+### Reviewing verifications (moderator or super_admin to change; support can read)
+
+| Try | Expect |
+| --- | --- |
+| `GET /admin/verifications` | undecided `manual_review` + `blocked` attempts, oldest first, with `providerSessionId` (open it in the Didit console) |
+| `GET /admin/verifications/<attemptId>` | `verifiedName`/`dateOfBirth` beside `providerVerifiedName`/`providerDateOfBirth`, `identities` (kinds only), `history` |
+| Approve with Didit's data: `POST …/approve { "note": "…" }` | 200, `outcome: approved`; the user's `/me` → `approved` |
+| Approve a `MISSING_DATA` attempt: `{ "note": "…", "documentType": "fayda_fin", "idNumber": "<12 digits>", "dateOfBirth": "…" }` | 200; `identity_hashes` gets a hash, the number appears nowhere (tables, audit, logs, response) |
+| Enter an `idNumber` on an attempt that already has Didit's | 409 `IDENTIFIER_ALREADY_PRESENT` |
+| Correct `fullName`/`dateOfBirth` | effective values change; `provider*` keep Didit's |
+| Decline: `POST …/decline { "reasonCode": "PHOTO_UNCLEAR", "note": "…" }` | 200; the user's `GET /verification/status` → `declined`, `reasonCode: PHOTO_UNCLEAR` |
+| Decline a `blocked` attempt | 409 `ATTEMPT_NOT_REVIEWABLE` |
+| The same as support | 403 `INSUFFICIENT_ROLE` |
+
 ## Worth trying on purpose
 
 | Try | Expect |

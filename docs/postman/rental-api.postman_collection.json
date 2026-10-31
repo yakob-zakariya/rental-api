@@ -794,6 +794,168 @@
           "response": []
         },
         {
+          "name": "Verification queue",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/verifications",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "verifications"
+              ]
+            },
+            "description": "200 `{ items, nextCursor }`: undecided manual_review + blocked, oldest first. The test saves the first item's id as `attemptId`.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const first = pm.response.json().items[0];",
+                  "if (first) pm.environment.set('attemptId', first.attemptId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verification detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/verifications/{{attemptId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "verifications",
+                "{{attemptId}}"
+              ]
+            },
+            "description": "Didit's values (`provider*`) beside the effective ones, identity kinds, history.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Approve verification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/verifications/{{attemptId}}/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "verifications",
+                "{{attemptId}}",
+                "approve"
+              ]
+            },
+            "description": "Moderator+. Add `documentType` + `idNumber` (+ `issuingCountry` for passports) only for an attempt with no Didit identifier; `dateOfBirth` / `fullName` correct the effective values. Errors: see the endpoint description in Swagger.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Checked in the Didit console\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Decline verification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/verifications/{{attemptId}}/decline",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "verifications",
+                "{{attemptId}}",
+                "decline"
+              ]
+            },
+            "description": "Moderator+, manual_review attempts only. `reasonCode`: PHOTO_UNCLEAR, DOCUMENT_EXPIRED, DOCUMENT_NOT_ACCEPTED, DOCUMENT_NOT_VERIFIED, UNDERAGE.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reasonCode\": \"PHOTO_UNCLEAR\",\n  \"note\": \"Checked in the Didit console\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
           "name": "App token on an admin route (expected failure)",
           "request": {
             "method": "GET",
