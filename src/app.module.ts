@@ -11,6 +11,7 @@ import {
   validateEnv,
 } from './config/env.validation.js';
 import { DatabaseModule } from './database/database.module.js';
+import { AdminModule } from './modules/admin/admin.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { ActiveAccountGuard } from './modules/auth/guards/active-account.guard.js';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard.js';
@@ -34,7 +35,15 @@ import { RedisModule } from './redis/redis.module.js';
         throttlerOptions({
           OTP_REQUEST_IP_LIMIT_PER_HOUR: config.get(
             'OTP_REQUEST_IP_LIMIT_PER_HOUR',
-            { infer: true },
+            {
+              infer: true,
+            },
+          ),
+          ADMIN_LOGIN_IP_LIMIT_PER_15_MIN: config.get(
+            'ADMIN_LOGIN_IP_LIMIT_PER_15_MIN',
+            {
+              infer: true,
+            },
           ),
         }),
     }),
@@ -47,6 +56,7 @@ import { RedisModule } from './redis/redis.module.js';
     SmsModule,
     AuthModule,
     VerificationModule,
+    AdminModule,
   ],
   providers: [
     { provide: APP_PIPE, useFactory: createValidationPipe },

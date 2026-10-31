@@ -7,10 +7,12 @@ import { DiditClient } from '../src/modules/verification/didit/didit-client.js';
 import { VerificationStatusService } from '../src/modules/verification/verification-status.service.js';
 import { FakeDiditClient } from './fakes/fake-didit-client.js';
 import { FakeSmsSender } from './fakes/fake-sms-sender.js';
+import { insertTestAdmin } from './utils/admins.js';
 import { createTestApp, resetDatabase } from './utils/create-test-app.js';
 import { signIn } from './utils/sign-in.js';
 
-const ADMIN_ID = '00000000-0000-4000-8000-000000000001';
+// A real admin row, created before each test (the admin id columns are foreign keys).
+let ADMIN_ID: string;
 
 interface Seed {
   outcome: string;
@@ -41,6 +43,7 @@ describe('verification status and manual review (e2e)', () => {
   });
 
   beforeEach(async () => {
+    ADMIN_ID = await insertTestAdmin(db);
     ({ accessToken } = await signIn(app, sms, '+251911234567'));
     userId = (await db.query<{ id: string }[]>(`SELECT id FROM users`))[0].id;
   });

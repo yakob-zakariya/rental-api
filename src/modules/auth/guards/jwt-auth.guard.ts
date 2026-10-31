@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { AuthRequest } from '../../../common/auth-request.js';
+import { isAdminRoute } from '../../../common/decorators/admin-route.decorator.js';
 import { IS_PUBLIC } from '../../../common/decorators/public.decorator.js';
 import { TokenService } from '../token.service.js';
 
@@ -21,7 +22,13 @@ export class JwtAuthGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    if (isPublic(this.reflector, context)) return true;
+    // Staff routes use the admin guards instead (S3); public routes need no token.
+    if (
+      isPublic(this.reflector, context) ||
+      isAdminRoute(this.reflector, context)
+    ) {
+      return true;
+    }
 
     const request = context.switchToHttp().getRequest<AuthRequest>();
     const [scheme, token, ...rest] = (

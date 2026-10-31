@@ -12,6 +12,7 @@ import { IdentityKind } from '../src/modules/verification/verification.enums.js'
 import { FakeDiditClient } from './fakes/fake-didit-client.js';
 import { FakeSmsSender } from './fakes/fake-sms-sender.js';
 import { TEST_ENV } from './test-env.js';
+import { insertTestAdmin } from './utils/admins.js';
 import { createTestApp, resetDatabase } from './utils/create-test-app.js';
 import { signIn } from './utils/sign-in.js';
 
@@ -22,7 +23,8 @@ const FIN = '123456789012';
 const FAN = '1234567890123456';
 const PASSPORT = 'EP1234567';
 const ADULT_DOB = '1990-05-17';
-const ADMIN_ID = '00000000-0000-4000-8000-000000000001';
+// A real admin row, created before each test (the admin id columns are foreign keys).
+let ADMIN_ID: string;
 
 type Doc = Record<string, unknown>;
 const fayda = (fields: Doc = {}): Doc => ({
@@ -92,6 +94,10 @@ describe('decision processing (e2e)', () => {
     );
     db = app.get(DataSource);
     hasher = app.get(IdentityHasher);
+  });
+
+  beforeEach(async () => {
+    ADMIN_ID = await insertTestAdmin(db);
   });
 
   afterEach(async () => {

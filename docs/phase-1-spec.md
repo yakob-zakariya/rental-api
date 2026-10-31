@@ -54,6 +54,7 @@ ID_HASH_PEPPER=            # long random secret; never change after launch
 
 OTP_TTL_SECONDS=300
 OTP_REQUEST_IP_LIMIT_PER_HOUR=30   # rule A8
+ADMIN_LOGIN_IP_LIMIT_PER_15_MIN=10   # staff login brute-force limit (per IP)
 OTP_HASH_SECRET=           # long random secret for HMAC of OTP codes
 SMS_PROVIDER=console       # 'console' logs codes in development
 
@@ -517,8 +518,19 @@ token when loading the page, so the page is protected separately, e.g. HTTP Basi
 
 ### Rules
 - **S1** Every endpoint above that changes data writes to `admin_actions`.
-- **S2** `support` can read everything here but change nothing.
-- **S3** Admin tokens are rejected on app routes and app tokens on admin routes.
+- **S2** `support` can read everything here but change nothing. Roles are minimum levels
+  (support < moderator < super_admin), and admin routes **fail closed**: a route without an
+  explicit `@Roles` needs any staff role for a read (GET/HEAD) and `moderator` for anything else.
+- **S3** Admin tokens are rejected on app routes and app tokens on admin routes. Staff tokens are
+  JWTs signed with `ADMIN_JWT_SECRET` (`aud: admin`, `ADMIN_JWT_TTL`, no refresh token); the admin
+  is loaded on every request, so deactivation or a role change applies at once.
+- **S6 — Staff login protection:** every failure (unknown email, wrong password, inactive
+  account, limit reached) is the same 401 `INVALID_CREDENTIALS`, and an unknown email still costs
+  a password check (no enumeration by timing). Limits: `ADMIN_LOGIN_IP_LIMIT_PER_15_MIN` per IP
+  (default 10, 429 `RATE_LIMITED`), and 10 failed attempts per email per 15 minutes counted in
+  Redis (survives restarts and IP rotation; temporary, cleared by a successful login, no
+  permanent lockout). Passwords: argon2id, at least 12 characters. The production `/docs` HTTP
+  Basic check goes through the same rules.
 - **S4 — Staff approval:** approval always requires at least one identity hash and a date of birth
   on the attempt. If Didit didn't return them, staff must enter `documentType`, `idNumber` and
   `dateOfBirth` (read from the Didit console), plus `issuingCountry` (ISO 3166-1 alpha-3) for a

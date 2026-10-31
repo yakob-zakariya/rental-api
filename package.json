@@ -24,7 +24,8 @@
     "migration:generate": "npm run build && typeorm migration:generate --pretty -d dist/database/data-source.js",
     "migration:run": "npm run build && typeorm migration:run -d dist/database/data-source.js",
     "migration:revert": "npm run build && typeorm migration:revert -d dist/database/data-source.js",
-    "migration:show": "npm run build && typeorm migration:show -d dist/database/data-source.js"
+    "migration:show": "npm run build && typeorm migration:show -d dist/database/data-source.js",
+    "admin:create": "npm run build && node dist/cli/create-admin.js"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",
@@ -37,6 +38,7 @@
     "@nestjs/terminus": "^12.1.0",
     "@nestjs/throttler": "^6.7.1",
     "@nestjs/typeorm": "^12.0.2",
+    "@node-rs/argon2": "^2.2.2",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "ioredis": "^5.11.1",

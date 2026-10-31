@@ -153,6 +153,12 @@ export class EnvironmentVariables {
   @IsInt({ message: '$property must be an integer' })
   OTP_REQUEST_IP_LIMIT_PER_HOUR: number = 30;
 
+  // Per-IP limit on POST /admin/auth/login (brute-force protection), per 15 minutes.
+  @Transform(toNumber)
+  @Min(1, { message: '$property must be at least 1' })
+  @IsInt({ message: '$property must be an integer' })
+  ADMIN_LOGIN_IP_LIMIT_PER_15_MIN: number = 10;
+
   @IsDefined(required)
   @IsString()
   @MinLength(SECRET_MIN_LENGTH, secret)
