@@ -5,7 +5,8 @@ import type { EnvironmentVariables } from './config/env.validation.js';
 import { setupSwagger } from './swagger.js';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // rawBody: the Didit webhook's X-Signature fallback signs the raw request bytes.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   const config = app.get(ConfigService<EnvironmentVariables, true>);
 
   // Close the database and Redis connections cleanly on SIGTERM/SIGINT.

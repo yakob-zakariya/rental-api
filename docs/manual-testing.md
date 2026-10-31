@@ -11,7 +11,8 @@ every new endpoint gets a step here.
    - `DIDIT_API_KEY`: the "yakobRental (Sandbox)" app's key
    - `DIDIT_WORKFLOW_ID=5d5368e7-3151-4cd6-b92d-d3efd0b4b00b` ("Free KYC")
    - `APP_VERIFICATION_CALLBACK_URL`: any https URL for now
-   - `DIDIT_WEBHOOK_SECRET`: only needed once the webhook destination exists (T2.5)
+   - `DIDIT_WEBHOOK_SECRET`: the sandbox webhook destination's secret
+   - `DIDIT_ENVIRONMENT=sandbox`
 
    With placeholders, starting verification returns 503 `VERIFICATION_PROVIDER_UNAVAILABLE`.
 3. `npm run migration:run` (no-op if up to date), then `npm run start:dev`. Keep this terminal
@@ -38,8 +39,24 @@ Restart `start:dev` after editing `.env`.
 | 12 | Repeat step 10 with the old token after the replacement was used | 401 `INVALID_REFRESH_TOKEN`, and every session of the user is revoked (A5) |
 | 13 | `POST /auth/logout` `{ "refreshToken": "<current refresh>" }` | 204 |
 
-Finishing the Didit flow in step 8 doesn't update our side yet: that needs the webhook (T2.5) and
-decision processing (T2.6). The attempt stays `pending`.
+## Webhooks (needs a tunnel)
+
+1. Start a tunnel to `localhost:3000` (e.g. `ngrok http --url=<your-static-domain> 3000`).
+2. In the Didit console (sandbox app), the webhook destination points at
+   `https://<tunnel>/webhooks/didit`, version v3, events `status.updated` + `data.updated`; its
+   secret is `DIDIT_WEBHOOK_SECRET`.
+3. Trigger events: finish the hosted flow from step 8, or use the console's **Try Webhook**.
+
+| Check | Expect |
+| --- | --- |
+| Didit console → destination → **Deliveries** | 200 for each event |
+| `start:dev` log | `[DiditEvents] Didit status.updated for session … (not processed yet)` |
+| `SELECT event_key, webhook_type, provider_status, processed_at, error FROM verification_webhook_events;` | one row per event, `processed_at` set, `error` null |
+| Resend the same delivery from the console | 200 again, still one row (V11) |
+| Change `DIDIT_WEBHOOK_SECRET` to something wrong, restart, resend | 401 in Deliveries; log `Rejected a Didit webhook: bad_signature`; no new row |
+
+Until decision processing exists (T2.6) the attempt stays `pending`: events are recorded but not
+applied.
 
 ## Worth trying on purpose
 

@@ -31,5 +31,6 @@ export const TEST_ENV = {
   DIDIT_WEBHOOK_SECRET: 'test-didit-webhook-secret',
   DIDIT_WORKFLOW_ID: 'test-didit-workflow-id',
   DIDIT_BASE_URL: 'https://verification.didit.me',
+  DIDIT_ENVIRONMENT: 'sandbox',
   APP_VERIFICATION_CALLBACK_URL: 'https://app.example.test/verification/done',
 } as const satisfies Record<string, string>;

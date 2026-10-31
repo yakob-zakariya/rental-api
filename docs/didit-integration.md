@@ -117,7 +117,7 @@ fresh `X-Timestamp`. Return 2xx quickly.
 **We subscribe to:** `status.updated` (decision processing) and `data.updated` (re-fetch the
 decision and flag the attempt `DATA_UPDATED`; never change `full_name` / `date_of_birth`, V9).
 
-### Signature recipe (implemented in T2.5)
+### Signature recipe (implemented in `didit/webhook-signature.ts`)
 
 1. `X-Timestamp` (Unix seconds): reject if `abs(now - X-Timestamp) > 300`.
 2. Parse the JSON body, then build the **canonical JSON**:
@@ -138,6 +138,14 @@ contain any.
 
 Our processing order differs from Didit's sample handler on purpose: `processed_at` is set only
 **after** processing succeeds (spec V11), so a failed attempt is retried.
+
+**Our responses** (`POST /webhooks/didit`): 200 processed or duplicate; 401
+`WEBHOOK_SIGNATURE_INVALID` (bad, missing or stale signature); 400 `WEBHOOK_ENVIRONMENT_MISMATCH` or
+`WEBHOOK_INVALID_PAYLOAD` (Didit doesn't retry 4xx); 500 `WEBHOOK_PROCESSING_FAILED` (Didit retries).
+
+**Test vector:** `didit/__fixtures__/webhook-wire.txt` holds a payload serialised by Python exactly
+as Didit does; `webhook-signature.spec.ts` checks our V2 and raw signatures against hashes
+computed in Python (Unicode, U+2028, nested objects, a whole-valued float).
 
 ---
 
@@ -161,7 +169,17 @@ Configured by the project owner and verified through the Didit API.
 - **Secrets:** `DIDIT_API_KEY` (sandbox app), `DIDIT_WORKFLOW_ID`, `DIDIT_WEBHOOK_SECRET` live
   only in the developer's `.env`, never in tracked files or chat.
 
-### Checklist for the LIVE application (before launch)
+### Sandbox vs live: the sandbox app performs no real checks
+
+Didit's test mode **simulates** verifications ("no real checks are performed"): the sandbox app
+mocks every provider and never bills. It is right for development and for testing our webhook and
+state handling, but it **cannot** answer anything about real documents. The real Fayda card test
+(T2.9) must therefore run in the **LIVE** app, with its workflow and webhook destination
+configured the same way as the sandbox's (checklist below), and `DIDIT_ENVIRONMENT=live`,
+`DIDIT_API_KEY` and `DIDIT_WORKFLOW_ID` pointing at the live app for that test. Live sessions are
+billed (within the free tier for "Free KYC").
+
+### Checklist for the LIVE application (before T2.9, and again before launch)
 
 - [ ] Recreate the workflow in the live app with the same features (OCR → passive liveness →
       face match → IP analysis; no AML) and the same accepted documents (Ethiopia:
@@ -179,7 +197,7 @@ Configured by the project owner and verified through the Didit API.
 
 ---
 
-## 5. Open questions — confirm in T2.9
+## 5. Open questions — confirm in T2.9 (in the LIVE app; the sandbox can't answer these)
 
 - [ ] **Fayda subtype:** is a physical Fayda card classified as `ID_CARD_GENERIC`? If a real card
       is rejected as unsupported, the subtype is different and the workflow needs updating.

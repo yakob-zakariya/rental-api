@@ -4,6 +4,7 @@ import {
   IsDefined,
   IsEnum,
   IsInt,
+  IsOptional,
   IsString,
   IsUrl,
   Matches,
@@ -21,6 +22,12 @@ export enum NodeEnv {
 
 export enum SmsProvider {
   Console = 'console',
+}
+
+/** Which Didit environment's webhook events we accept (spec §4 flow step 3). */
+export enum DiditEnvironment {
+  Sandbox = 'sandbox',
+  Live = 'live',
 }
 
 const SECRET_MIN_LENGTH = 32;
@@ -178,6 +185,14 @@ export class EnvironmentVariables {
     { message: '$property must be an http(s):// URL' },
   )
   APP_VERIFICATION_CALLBACK_URL: string;
+
+  // No default here: sandbox is filled in by validateEnv outside production, and production
+  // must set it explicitly so it can never silently accept sandbox events.
+  @IsOptional()
+  @IsEnum(DiditEnvironment, {
+    message: '$property must be one of sandbox, live',
+  })
+  DIDIT_ENVIRONMENT: DiditEnvironment;
 }
 
 // Variables whose .env.example value is a placeholder that production must replace.
@@ -237,6 +252,16 @@ export function validateEnv(
       problems.push(
         "SMS_PROVIDER=console logs OTP codes and can't be used in production",
       );
+    }
+  }
+
+  if (env.DIDIT_ENVIRONMENT === undefined) {
+    if (env.NODE_ENV === NodeEnv.Production) {
+      problems.push(
+        'DIDIT_ENVIRONMENT is required in production (sandbox or live)',
+      );
+    } else {
+      env.DIDIT_ENVIRONMENT = DiditEnvironment.Sandbox;
     }
   }
 

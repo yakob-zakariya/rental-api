@@ -274,12 +274,16 @@ banned again after being lifted).
 2. **User completes the flow** in the app (Didit SDK or hosted page): document front/back,
    then a selfie with passive liveness.
 3. **Webhook:** `POST /webhooks/didit` (`@Public()`; no JWT).
-   - Verify the signature exactly as Didit documents it (`X-Signature-V2`; recipe in
-     `docs/didit-integration.md`). Reject invalid signatures with 401. Reject events whose
+   - Verify the signature exactly as Didit documents it (recipe in `docs/didit-integration.md`):
+     `X-Signature-V2` first, then the raw-body `X-Signature` as a fallback (each also matching its
+     `-Previous` header during a secret rotation). `X-Signature-Simple` is never accepted.
+     Reject invalid signatures with 401 `WEBHOOK_SIGNATURE_INVALID`. Reject events whose
      `X-Timestamp` is more than 5 minutes from now (acceptable because the polling job catches
      anything we reject).
    - **Environment check:** reject events whose `environment` (`live` / `sandbox`) differs from
-     `DIDIT_ENVIRONMENT`, so sandbox events can never change production data.
+     `DIDIT_ENVIRONMENT` with 400 `WEBHOOK_ENVIRONMENT_MISMATCH` (not retried by Didit), and log a
+     warning with the two environment values only (it means a webhook destination is
+     misconfigured). Sandbox events can never change production data.
    - The `event_key` is Didit's `event_id`. If an event with that key exists **and `processed_at`
      is set**, return 200 and do nothing. If it exists but was never processed (e.g. an earlier
      error), process it again.
@@ -287,7 +291,10 @@ banned again after being lifted).
      edited the extracted data in Didit) re-fetch the decision and flag the attempt for staff
      (`flag_reason = DATA_UPDATED`); they never change `full_name` / `date_of_birth` (V9).
    - Store/update the event row, process the decision inline (fine for Phase 1; move to a BullMQ
-     job if processing grows), set `processed_at` (or `error`), return 200.
+     job if processing grows) and set `processed_at`, all in one transaction, then return 200.
+     **If processing fails**, roll back, record `error` on the event row (leaving `processed_at`
+     null) and return **500**, so Didit retries (twice, after ≈1 and ≈4 minutes); the polling job
+     is the backstop. A malformed envelope returns 400 `WEBHOOK_INVALID_PAYLOAD`.
 4. **Processing a decision** (shared by the webhook and the polling job), in one transaction:
    - Load the attempt by `provider_session_id` with `SELECT … FOR UPDATE`, so the webhook and
      the polling job can never process the same session at the same time.
@@ -500,6 +507,8 @@ self-signed fake webhook payloads — tests must not call the real Didit API.
 1. `docker compose up -d`, run migrations, start the API.
 2. Start a tunnel (ngrok or `cloudflared tunnel --url http://localhost:3000`) and set
    `https://<tunnel>/webhooks/didit` as the webhook URL in the Didit console.
+   Use the Didit **LIVE** app for this check (with `DIDIT_ENVIRONMENT=live`): the sandbox app
+   only simulates verifications and performs no real document checks.
 3. Sign up with your phone (code appears in the console), start verification, complete it on
    your phone with your real ID.
 4. Confirm `GET /me` shows `approved`, and that `identity_verifications` and `identity_hashes`
