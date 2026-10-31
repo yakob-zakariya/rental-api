@@ -77,7 +77,11 @@ Tick each box when it's merged and you've understood the code.
 - [ ] **T2.7 Polling job.** Scheduled check for stuck sessions, 24-hour expiry (V16); tests.
 - [ ] **T2.8 Status + manual review request.** `GET /verification/status`,
       `POST /verification/manual-review-request`; tests.
-- [ ] **T2.9 Real-world check.** Tunnel + Didit sandbox + your own ID (spec section 8). Answer the
+- [ ] **T2.9 Real-world check.** Tunnel + the Didit **LIVE** app + your own ID (spec section 8).
+      The sandbox app only simulates verifications ("no real checks are performed"), so first set
+      up the live app like the sandbox (same workflow and webhook destination; checklist in
+      `docs/didit-integration.md`) and point `.env` at it (`DIDIT_ENVIRONMENT=live`, live
+      `DIDIT_API_KEY` / `DIDIT_WORKFLOW_ID` / `DIDIT_WEBHOOK_SECRET`). Answer the
       open questions in `docs/didit-integration.md`: is the physical Fayda card classified as
       `ID_CARD_GENERIC`; which Fayda numbers come back (FIN, FAN, both), in which field and with
       what lengths; the DOB calendar; whether the paper credential or digital Fayda is accepted.

@@ -18,6 +18,7 @@ export async function createTestApp(
   ).compile();
   const app = moduleRef.createNestApplication<INestApplication<App>>({
     logger: ['error', 'warn'],
+    rawBody: true, // as in main.ts (Didit webhook X-Signature fallback)
   });
   await app.init();
   return app;

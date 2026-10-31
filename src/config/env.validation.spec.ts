@@ -1,4 +1,9 @@
-import { NodeEnv, SmsProvider, validateEnv } from './env.validation.js';
+import {
+  DiditEnvironment,
+  NodeEnv,
+  SmsProvider,
+  validateEnv,
+} from './env.validation.js';
 
 const secret = (name: string) => `${name}-0123456789abcdef0123456789abcdef`;
 
@@ -131,6 +136,33 @@ describe('validateEnv', () => {
       expect(errorOf(raw)).toContain('ADMIN_JWT_SECRET must differ');
     },
   );
+
+  describe('DIDIT_ENVIRONMENT', () => {
+    it.each(['development', 'test'])('defaults to sandbox in %s', (nodeEnv) => {
+      expect(
+        validateEnv({ ...validEnv(), NODE_ENV: nodeEnv }).DIDIT_ENVIRONMENT,
+      ).toBe(DiditEnvironment.Sandbox);
+    });
+
+    it('is required in production', () => {
+      expect(errorOf({ ...validEnv(), NODE_ENV: 'production' })).toContain(
+        'DIDIT_ENVIRONMENT is required in production',
+      );
+    });
+
+    it.each(['sandbox', 'live'])('accepts %s', (value) => {
+      expect(
+        validateEnv({ ...validEnv(), DIDIT_ENVIRONMENT: value })
+          .DIDIT_ENVIRONMENT,
+      ).toBe(value);
+    });
+
+    it('rejects anything else', () => {
+      expect(
+        errorOf({ ...validEnv(), DIDIT_ENVIRONMENT: 'production' }),
+      ).toContain('DIDIT_ENVIRONMENT must be one of sandbox, live');
+    });
+  });
 
   describe('SMS_PROVIDER=console', () => {
     it('is rejected in production', () => {
