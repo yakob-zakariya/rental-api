@@ -40,6 +40,7 @@ describe('validateEnv', () => {
     expect(env.NODE_ENV).toBe(NodeEnv.Development);
     expect(env.PORT).toBe(3000);
     expect(env.SWAGGER_ENABLED).toBe(false);
+    expect(env.JOBS_ENABLED).toBe(true);
     expect(env.JWT_ACCESS_TTL).toBe('15m');
     expect(env.JWT_REFRESH_TTL).toBe('30d');
     expect(env.ADMIN_JWT_TTL).toBe('8h');
@@ -93,6 +94,7 @@ describe('validateEnv', () => {
     ['DATABASE_URL', 'mysql://localhost/rental', 'must be a postgres:// URL'],
     ['REDIS_URL', 'localhost:6379', 'must be a redis:// URL'],
     ['SWAGGER_ENABLED', 'yes', 'must be true or false'],
+    ['JOBS_ENABLED', 'sometimes', 'must be true or false'],
     ['JWT_ACCESS_TTL', '15 minutes', 'must be a duration'],
     ['ADMIN_JWT_TTL', '8', 'must be a duration'],
     ['OTP_TTL_SECONDS', '0', 'must be a positive number of seconds'],

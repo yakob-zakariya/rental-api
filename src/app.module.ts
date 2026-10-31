@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD, APP_PIPE } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { AppThrottlerGuard } from './common/throttler.guard.js';
 import { throttlerOptions } from './common/throttling.js';
@@ -37,6 +38,8 @@ import { RedisModule } from './redis/redis.module.js';
           ),
         }),
     }),
+    // Cron jobs; each job checks JOBS_ENABLED itself.
+    ScheduleModule.forRoot(),
     DatabaseModule,
     RedisModule,
     HealthModule,

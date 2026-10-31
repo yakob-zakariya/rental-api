@@ -18,6 +18,10 @@ import { VerificationOutcome } from '../verification.enums.js';
 @Unique('UQ_identity_verifications_provider_session_id', ['providerSessionId'])
 // V3 counts and recompute's "most recent attempt" both read a user's attempts by date.
 @Index('IDX_identity_verifications_user_id_created_at', ['userId', 'createdAt'])
+// The polling job's query: pending attempts by how long they have been pending (spec flow step 5).
+@Index('IDX_identity_verifications_pending_since', ['pendingSince'], {
+  where: `"outcome" = 'pending'`,
+})
 // The resume URL and token only exist while the attempt is pending (cleared on a final outcome).
 @Check(
   'CHK_identity_verifications_resume_only_pending',
@@ -125,6 +129,17 @@ export class IdentityVerification {
 
   @Column({ name: 'decided_at', type: 'timestamptz', nullable: true })
   decidedAt: Date | null;
+
+  /**
+   * When this attempt (last) became pending: its creation, or a reopen (spec V2). The polling
+   * job's 10-minute and 24-hour (V16) clocks count from here; V3 counts from created_at.
+   */
+  @Column({
+    name: 'pending_since',
+    type: 'timestamptz',
+    default: () => 'now()',
+  })
+  pendingSince: Date;
 
   @Column({ name: 'completed_at', type: 'timestamptz', nullable: true })
   completedAt: Date | null;
