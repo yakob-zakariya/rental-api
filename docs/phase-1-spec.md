@@ -127,7 +127,7 @@ All IDs are UUIDs; all timestamps are `timestamptz`.
 | session_token | varchar null | So V2 can resume the session; cleared on a final outcome |
 | manual_review_requested_at | timestamptz null | Set when the user requests manual review on this attempt |
 | flagged_at | timestamptz null | Needs staff attention (V6, approved → declined, …) |
-| flag_reason | varchar null | Internal code: `DUPLICATE_IDENTITY` (V6), `POSSIBLE_DUPLICATE` (V7), `MISSING_DATA` (V8), `DOCUMENT_MISMATCH` (V17), `DOCUMENT_DECLINED` (V18), `APPROVAL_REVERSED` (V15), `DATA_UPDATED`, `PROVIDER_SESSION_STATE_CONFLICT` |
+| flag_reason | varchar null | Internal code: `DUPLICATE_IDENTITY` (V6), `POSSIBLE_DUPLICATE` / `POSSIBLE_BANNED_DUPLICATE` (V7), `MISSING_DATA` (V8), `DOCUMENT_MISMATCH` (V17), `DOCUMENT_DECLINED` (V18), `APPROVAL_REVERSED` (V15), `DATA_UPDATED`, `PROVIDER_SESSION_STATE_CONFLICT` |
 | decided_by_admin_id | uuid null FK → admin_users | Set when staff approve/decline; makes the outcome final |
 | decided_at | timestamptz null | |
 | pending_since | timestamptz | When the attempt (last) became `pending`: its creation, or a reopen (flow step 1). The polling job's 10-minute and 24-hour (V16) clocks count from here; V3 counts from `created_at` |
@@ -421,7 +421,8 @@ approve/decline, unban). It derives the status from the attempt history:
   (Later: staff can convert a V6 block into an account move for a user who lost their SIM.)
 - **V7 — Weak duplicate signal:** same normalised `verified_name` + `date_of_birth` as another
   approved user, with no matching hash (e.g. Fayda then passport) → `manual_review`, not blocked,
-  flagged `POSSIBLE_DUPLICATE`. Name normalisation: NFKD, strip diacritics, lowercase, remove
+  flagged `POSSIBLE_DUPLICATE` — or `POSSIBLE_BANNED_DUPLICATE` if that approved user is banned
+  (likely ban evasion with a second document). Name normalisation: NFKD, strip diacritics, lowercase, remove
   punctuation, collapse whitespace (non-Latin text is kept as is, so it only matches identical
   text); compare the full name. False positives are acceptable since this only triggers review.
 - **V8 — Missing data:** Didit approved but returned no usable identifier (no number that maps to
@@ -521,8 +522,11 @@ token when loading the page, so the page is protected separately, e.g. HTTP Basi
   user goes back to `declined` and normal retry rules apply. `reasonCode` is one of
   `PHOTO_UNCLEAR`, `DOCUMENT_EXPIRED`, `DOCUMENT_NOT_ACCEPTED`, `DOCUMENT_NOT_VERIFIED`,
   `UNDERAGE`; it is user-safe and shown as the user's `reasonCode`. `note` is required (1–1000).
-- `POST /admin/users/:userId/ban { reason }` — moderator+. See S5.
-- `POST /admin/users/:userId/unban { note }` — super_admin only. See S5.
+- `GET /admin/users/:userId` — any staff role: phone, status, verification status, verified name and
+  date of birth, identity *kinds* (never hashes or numbers), active bans (kind, reason, date) and
+  attempts, so staff can check who they're acting on.
+- `POST /admin/users/:userId/ban { reason }` — moderator+. See S5. `reason` 1–255 characters.
+- `POST /admin/users/:userId/unban { note }` — super_admin only. See S5. `note` required.
 - `GET /admin/actions?targetId=&adminId=&action=&limit=&before=` — audit log, newest first (any staff
   role); `limit` default 50, max 200; `before` is the previous page's `nextCursor`, a composite
   (`created_at`, `id`) cursor so actions with the same timestamp page correctly.
@@ -579,6 +583,13 @@ token when loading the page, so the page is protected separately, e.g. HTTP Basi
     to `banned`.
   - Unban sets `users.status = active`, sets `lifted_at`/`lifted_by_admin_id` on that user's active
     `banned_identities` rows, and recomputes the user's verification status.
+  - Only hashes of the **approved** attempt are banned: hashes from other attempts might be
+    someone else's number on a fake document (as in V18). An identifier already under another
+    active ban is skipped. Unban lifts only **this** user's bans; another user's ban of the same
+    identifier stays. Revoked refresh tokens stay revoked (the user signs in again).
+  - Attempts blocked while the ban was active are **not** reopened by unban; staff approve them
+    through the review queue (S4) if appropriate.
+  - Errors: 404 `USER_NOT_FOUND`, 409 `ALREADY_BANNED`, 409 `NOT_BANNED`; both actions audited.
 
 ---
 
