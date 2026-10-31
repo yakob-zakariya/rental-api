@@ -139,6 +139,18 @@ Runs every 5 minutes when `JOBS_ENABLED=true` (the default in `.env`).
 | Decline a `blocked` attempt | 409 `ATTEMPT_NOT_REVIEWABLE` |
 | The same as support | 403 `INSUFFICIENT_ROLE` |
 
+### Bans (ban: moderator+; unban: super_admin only)
+
+| Try | Expect |
+| --- | --- |
+| `GET /admin/users/<userId>` (any staff role) | status, identity kinds, active bans, attempts; no hashes or numbers |
+| `POST /admin/users/<userId>/ban { "reason": "…" }` | 200 `{ status: banned, identitiesBanned }`; that user's app token → 403 `ACCOUNT_UNAVAILABLE`, refresh → 401, sign-in → 403 |
+| Another account verifying with the banned person's Fayda/passport | its attempt → `blocked` (V5) |
+| Same name + date of birth on a different document | `manual_review`, flag `POSSIBLE_BANNED_DUPLICATE` |
+| Ban again | 409 `ALREADY_BANNED` |
+| `POST /admin/users/<userId>/unban { "note": "…" }` as moderator | 403 `INSUFFICIENT_ROLE` |
+| … as super_admin | 200, `status: active`; the user signs in again (old tokens stay revoked) |
+
 ## Worth trying on purpose
 
 | Try | Expect |

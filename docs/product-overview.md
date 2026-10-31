@@ -107,6 +107,7 @@ Three separate layers:
   `stale` (hidden; one tap restores it). Stale for 30 days → `expired` (must re-check details).
 - **Rented:** lister taps "Rented" and picks the tenant; the tenant confirms → a `rentals` row.
 - Price: `monthly_rent_birr` (integer) and `advance_months` (integer) are separate fields.
+- Banning a user must hide all their listings.
 
 ## 7. Location and maps (to design)
 

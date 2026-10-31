@@ -16,6 +16,7 @@ import { AuthModule } from './modules/auth/auth.module.js';
 import { ActiveAccountGuard } from './modules/auth/guards/active-account.guard.js';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard.js';
 import { HealthModule } from './modules/health/health.module.js';
+import { ModerationModule } from './modules/moderation/moderation.module.js';
 import { SmsModule } from './modules/sms/sms.module.js';
 import { UsersModule } from './modules/users/users.module.js';
 import { VerificationModule } from './modules/verification/verification.module.js';
@@ -57,6 +58,7 @@ import { RedisModule } from './redis/redis.module.js';
     AuthModule,
     VerificationModule,
     AdminModule,
+    ModerationModule,
   ],
   providers: [
     { provide: APP_PIPE, useFactory: createValidationPipe },

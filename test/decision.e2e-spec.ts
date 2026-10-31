@@ -525,6 +525,25 @@ describe('decision processing (e2e)', () => {
       });
     });
 
+    it('V7: flags POSSIBLE_BANNED_DUPLICATE when the matching approved user is banned (ban evasion)', async () => {
+      const first = await userWithAttempt();
+      await deliver(first.sessionId, 'Approved', [passport()]);
+      await db.query(`UPDATE users SET status = 'banned' WHERE id = $1`, [
+        first.userId,
+      ]);
+      const second = await userWithAttempt();
+
+      // A second document (no hash in common), same person: not caught by V5, only by V7.
+      await deliver(second.sessionId, 'Approved', [
+        fayda({ full_name: 'Abebe Kebede' }),
+      ]);
+
+      expect(await attempt(second.attemptId)).toMatchObject({
+        outcome: 'manual_review',
+        flag_reason: 'POSSIBLE_BANNED_DUPLICATE',
+      });
+    });
+
     it('applies the checks in order: banned beats underage and missing data', async () => {
       const a = await userWithAttempt();
       await db.query(

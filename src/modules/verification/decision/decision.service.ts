@@ -242,34 +242,43 @@ export class DecisionService {
       return result(VerificationOutcome.Declined, 'UNDERAGE', null);
     }
 
-    // V7: same normalised name + date of birth as another approved user.
-    if (
-      identity.fullName &&
-      (await this.weakDuplicate(manager, attempt, identity))
-    ) {
+    // V7: same normalised name + date of birth as another approved user. If that user is banned,
+    // it's likely ban evasion with a second document, so it gets its own flag to stand out.
+    const weak = identity.fullName
+      ? await this.weakDuplicate(manager, attempt, identity)
+      : 'none';
+    if (weak !== 'none') {
       return result(
         VerificationOutcome.ManualReview,
         null,
-        'POSSIBLE_DUPLICATE',
+        weak === 'banned' ? 'POSSIBLE_BANNED_DUPLICATE' : 'POSSIBLE_DUPLICATE',
       );
     }
 
     return result(VerificationOutcome.Approved, null, null);
   }
 
+  /** V7 match: none, another approved user, or another approved user who is banned. */
   private async weakDuplicate(
     manager: EntityManager,
     attempt: AttemptRow,
     identity: ExtractedIdentity,
-  ): Promise<boolean> {
-    const rows = await manager.query<{ verified_name: string }[]>(
-      `SELECT verified_name FROM identity_verifications
-       WHERE outcome = 'approved' AND user_id <> $1 AND date_of_birth = $2
-         AND verified_name IS NOT NULL`,
+  ): Promise<'none' | 'match' | 'banned'> {
+    const rows = await manager.query<
+      { verified_name: string; banned: boolean }[]
+    >(
+      `SELECT a.verified_name, u.status = 'banned' AS banned
+       FROM identity_verifications a JOIN users u ON u.id = a.user_id
+       WHERE a.outcome = 'approved' AND a.user_id <> $1 AND a.date_of_birth = $2
+         AND a.verified_name IS NOT NULL`,
       [attempt.user_id, identity.dateOfBirth],
     );
     const name = normaliseName(identity.fullName!);
-    return rows.some((row) => normaliseName(row.verified_name) === name);
+    const matches = rows.filter(
+      (row) => normaliseName(row.verified_name) === name,
+    );
+    if (matches.length === 0) return 'none';
+    return matches.some((row) => row.banned) ? 'banned' : 'match';
   }
 
   /**
