@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import { VerificationStatus } from '../users/user.enums.js';
 import { DiditApiError } from './didit/didit-api.error.js';
@@ -25,8 +25,41 @@ export interface StartedSession {
   sessionToken: string;
 }
 
+/** User-safe reason for a declined verification (never for blocked or manual_review). */
+export enum VerificationReasonCode {
+  Underage = 'UNDERAGE',
+  DocumentNotVerified = 'DOCUMENT_NOT_VERIFIED',
+}
+
+/** GET /verification/status (spec §4 flow step 6). */
+export interface VerificationStatusView {
+  status: VerificationStatus;
+  /** POST /verification/sessions would start or resume a session right now. */
+  canRetry: boolean;
+  retriesLeftToday: number;
+  canRequestManualReview: boolean;
+  reasonCode?: VerificationReasonCode;
+}
+
+/**
+ * What POST /verification/sessions may do for this user right now (V1, V13, V2, V3). The one
+ * source of truth for both starting a session and the status endpoint's canRetry.
+ */
+type Eligibility =
+  | { kind: 'refused'; status: VerificationStatus }
+  | { kind: 'resume'; session: StartedSession }
+  | { kind: 'limit'; manualReviewAvailable: boolean; retryAfterSeconds: number }
+  | { kind: 'create' };
+
 type StartOutcome =
   { kind: 'ok'; session: StartedSession } | { kind: 'conflict' };
+
+interface LatestAttempt {
+  id: string;
+  outcome: VerificationOutcome;
+  provider_status: string;
+  decided_by_staff: boolean;
+}
 
 /**
  * Local outcomes that can be resumed when Didit says the session is still unfinished. Expired is
@@ -37,6 +70,9 @@ const RESUMABLE = [
   VerificationOutcome.Abandoned,
   VerificationOutcome.Expired,
 ];
+
+const manualReviewNotAvailable = () =>
+  new ConflictException({ code: 'MANUAL_REVIEW_NOT_AVAILABLE' });
 
 @Injectable()
 export class VerificationService {
@@ -63,26 +99,99 @@ export class VerificationService {
     return outcome.session;
   }
 
+  /** GET /verification/status. Blocked users learn nothing beyond "blocked" (hard rule 10). */
+  async getStatus(userId: string): Promise<VerificationStatusView> {
+    const manager = this.dataSource.manager;
+    const eligibility = await this.eligibility(manager, userId);
+    const status = await this.userStatus(manager, userId);
+
+    if (status === VerificationStatus.Blocked) {
+      return {
+        status,
+        canRetry: false,
+        retriesLeftToday: 0,
+        canRequestManualReview: false,
+      };
+    }
+
+    const { count } = await this.window(manager, userId);
+    const view: VerificationStatusView = {
+      status,
+      canRetry: eligibility.kind === 'resume' || eligibility.kind === 'create',
+      retriesLeftToday: Math.max(0, MAX_SESSIONS_PER_WINDOW - count),
+      canRequestManualReview:
+        eligibility.kind === 'limit' && eligibility.manualReviewAvailable,
+    };
+    if (status === VerificationStatus.Declined) {
+      view.reasonCode = await this.reasonCode(manager, userId);
+    }
+    return view;
+  }
+
+  /**
+   * POST /verification/manual-review-request (spec §4 flow step 7): only at the V3 limit, and only
+   * when the most recent attempt was declined by Didit (not by us, not by staff). Moves that
+   * attempt to manual_review for staff and recomputes.
+   */
+  async requestManualReview(userId: string): Promise<VerificationStatusView> {
+    await this.dataSource.transaction(async (manager) => {
+      await this.lockUser(manager, userId);
+      const eligibility = await this.eligibility(manager, userId);
+      if (eligibility.kind === 'refused') throw refusal(eligibility.status);
+      if (eligibility.kind !== 'limit' || !eligibility.manualReviewAvailable) {
+        throw manualReviewNotAvailable();
+      }
+
+      const latest = (await this.latestAttempt(manager, userId))!;
+      // Guarded on the current outcome too, so it's safe even if two requests got this far.
+      const updated = await manager.query<{ id: string }[]>(
+        `UPDATE identity_verifications
+         SET outcome = 'manual_review', manual_review_requested_at = clock_timestamp()
+         WHERE id = $1 AND outcome = 'declined'
+         RETURNING id`,
+        [latest.id],
+      );
+      if (updated.length === 0) throw verificationInReview();
+      await this.status.recomputeVerificationStatus(userId, manager);
+      this.logger.log(`Attempt ${latest.id}: manual review requested`);
+    });
+    return this.getStatus(userId);
+  }
+
   private async startLocked(
     manager: EntityManager,
     userId: string,
   ): Promise<StartOutcome> {
-    await manager.query(
-      `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
-      [`verification:${userId}`],
-    );
+    await this.lockUser(manager, userId);
 
-    const [user] = await manager.query<
-      { verification_status: VerificationStatus }[]
-    >(`SELECT verification_status FROM users WHERE id = $1`, [userId]);
-    // V1, then V13.
-    if (user.verification_status === VerificationStatus.Approved)
-      throw alreadyVerified();
-    if (user.verification_status === VerificationStatus.ManualReview) {
-      throw verificationInReview();
+    const eligibility = await this.eligibility(manager, userId);
+    switch (eligibility.kind) {
+      case 'refused':
+        throw refusal(eligibility.status);
+      case 'resume':
+        return { kind: 'ok', session: eligibility.session };
+      case 'limit':
+        throw verificationRetryLimit(
+          eligibility.manualReviewAvailable,
+          eligibility.retryAfterSeconds,
+        );
+      case 'create':
+        return this.createOrResumeAtDidit(manager, userId);
     }
-    if (user.verification_status === VerificationStatus.Blocked) {
-      throw verificationUnavailable();
+  }
+
+  private async eligibility(
+    manager: EntityManager,
+    userId: string,
+  ): Promise<Eligibility> {
+    // V1, then V13.
+    const status = await this.userStatus(manager, userId);
+    if (
+      status === VerificationStatus.Approved ||
+      status === VerificationStatus.ManualReview ||
+      status === VerificationStatus.Blocked
+    ) {
+      return { kind: 'refused', status };
     }
 
     // V2: resume a recent pending attempt. Not a new session, so not counted toward V3.
@@ -91,16 +200,28 @@ export class VerificationService {
       userId,
       RESUME_WINDOW_MINUTES,
     );
-    if (recent) return { kind: 'ok', session: recent };
+    if (recent) return { kind: 'resume', session: recent };
 
-    if (await this.retryLimitReached(manager, userId)) {
+    const { count, retryAfterSeconds } = await this.window(manager, userId);
+    if (count >= MAX_SESSIONS_PER_WINDOW) {
       // At the V3 limit, a pending attempt of any age is resumed from what we stored, without
       // calling Didit: a call could create a 4th session if Didit has finished the old one.
       const pending = await this.latestPendingSession(manager, userId);
-      if (pending) return { kind: 'ok', session: pending };
-      throw await this.retryLimitError(manager, userId);
+      if (pending) return { kind: 'resume', session: pending };
+      const latest = await this.latestAttempt(manager, userId);
+      return {
+        kind: 'limit',
+        manualReviewAvailable: !!latest && isDiditDecline(latest),
+        retryAfterSeconds,
+      };
     }
+    return { kind: 'create' };
+  }
 
+  private async createOrResumeAtDidit(
+    manager: EntityManager,
+    userId: string,
+  ): Promise<StartOutcome> {
     let session: DiditSession;
     try {
       session = await this.didit.createSession({ vendorData: userId });
@@ -180,6 +301,27 @@ export class VerificationService {
     };
   }
 
+  /** Serialises a user's starts and manual-review requests. */
+  private async lockUser(
+    manager: EntityManager,
+    userId: string,
+  ): Promise<void> {
+    await manager.query(
+      `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+      [`verification:${userId}`],
+    );
+  }
+
+  private async userStatus(
+    manager: EntityManager,
+    userId: string,
+  ): Promise<VerificationStatus> {
+    const [user] = await manager.query<
+      { verification_status: VerificationStatus }[]
+    >(`SELECT verification_status FROM users WHERE id = $1`, [userId]);
+    return user.verification_status;
+  }
+
   /** The newest pending attempt's stored URL and token; optionally only if younger than N minutes. */
   private async latestPendingSession(
     manager: EntityManager,
@@ -204,45 +346,59 @@ export class VerificationService {
       : null;
   }
 
-  /** V3: max 3 created sessions per rolling 24 hours; every attempt row counts. */
-  private async retryLimitReached(
+  /**
+   * V3's rolling window: sessions created in the last 24 hours (every attempt row counts), and
+   * the seconds until the oldest of them leaves the window.
+   */
+  private async window(
     manager: EntityManager,
     userId: string,
-  ): Promise<boolean> {
-    const [window] = await manager.query<{ count: number }[]>(
-      `SELECT count(*)::int AS count FROM identity_verifications
-       WHERE user_id = $1 AND created_at > clock_timestamp() - make_interval(hours => $2)`,
-      [userId, SESSION_WINDOW_HOURS],
-    );
-    return window.count >= MAX_SESSIONS_PER_WINDOW;
-  }
-
-  private async retryLimitError(manager: EntityManager, userId: string) {
-    // Seconds until the oldest counted attempt leaves the window.
-    const [window] = await manager.query<{ retry_after: number | null }[]>(
-      `SELECT ceil(extract(epoch FROM min(created_at) + make_interval(hours => $2)
+  ): Promise<{ count: number; retryAfterSeconds: number }> {
+    const [window] = await manager.query<
+      { count: number; retry_after: number | null }[]
+    >(
+      `SELECT count(*)::int AS count,
+              ceil(extract(epoch FROM min(created_at) + make_interval(hours => $2)
                 - clock_timestamp()))::int AS retry_after
        FROM identity_verifications
        WHERE user_id = $1 AND created_at > clock_timestamp() - make_interval(hours => $2)`,
       [userId, SESSION_WINDOW_HOURS],
     );
+    return {
+      count: window.count,
+      retryAfterSeconds: Math.max(1, window.retry_after ?? 1),
+    };
+  }
 
-    // Manual review is offered only when the latest attempt was declined by Didit itself.
-    const [latest] = await manager.query<
-      { outcome: VerificationOutcome; provider_status: string }[]
-    >(
-      `SELECT outcome, provider_status FROM identity_verifications
+  private async latestAttempt(
+    manager: EntityManager,
+    userId: string,
+  ): Promise<LatestAttempt | undefined> {
+    const [latest] = await manager.query<LatestAttempt[]>(
+      `SELECT id, outcome, provider_status,
+              decided_by_admin_id IS NOT NULL AS decided_by_staff
+       FROM identity_verifications
        WHERE user_id = $1 ORDER BY created_at DESC, id DESC LIMIT 1`,
       [userId],
     );
-    const manualReviewAvailable =
-      latest?.outcome === VerificationOutcome.Declined &&
-      latest.provider_status === DiditStatus.Declined;
+    return latest;
+  }
 
-    return verificationRetryLimit(
-      manualReviewAvailable,
-      Math.max(1, window.retry_after ?? 1),
+  /** The declined attempt recompute used (newest that isn't abandoned/expired). */
+  private async reasonCode(
+    manager: EntityManager,
+    userId: string,
+  ): Promise<VerificationReasonCode> {
+    const [row] = await manager.query<{ decline_reason: string | null }[]>(
+      `SELECT decline_reason FROM identity_verifications
+       WHERE user_id = $1 AND outcome NOT IN ('abandoned', 'expired')
+       ORDER BY created_at DESC, id DESC LIMIT 1`,
+      [userId],
     );
+    // Only our own reasons are specific; Didit's warnings aren't mapped yet (after T2.9).
+    return row?.decline_reason === 'UNDERAGE'
+      ? VerificationReasonCode.Underage
+      : VerificationReasonCode.DocumentNotVerified;
   }
 
   /** Didit returned a session that is approved/declined/blocked/manual_review here (or not this user's). */
@@ -264,4 +420,20 @@ export class VerificationService {
       [existing.id],
     );
   }
+}
+
+/** Declined by Didit itself: not by our checks (e.g. UNDERAGE) and not by staff. */
+function isDiditDecline(attempt: LatestAttempt): boolean {
+  return (
+    attempt.outcome === VerificationOutcome.Declined &&
+    attempt.provider_status === DiditStatus.Declined &&
+    !attempt.decided_by_staff
+  );
+}
+
+/** V1 / V13 errors for a refused user. */
+function refusal(status: VerificationStatus) {
+  if (status === VerificationStatus.Approved) return alreadyVerified();
+  if (status === VerificationStatus.ManualReview) return verificationInReview();
+  return verificationUnavailable();
 }

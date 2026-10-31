@@ -332,12 +332,26 @@ banned again after being lifted).
    failure.
 6. **Status:** `GET /verification/status` →
    `{ status, canRetry, retriesLeftToday, canRequestManualReview, reasonCode? }`.
-   `reasonCode` is user-safe (e.g. `PHOTO_UNCLEAR`, `DOCUMENT_EXPIRED`); never reveal blocking reasons.
-7. **Manual review request:** `POST /verification/manual-review-request` — allowed only when the
-   V3 limit is reached **and** the most recent attempt was declined by Didit
-   (`outcome = declined`, `provider_status` = Didit's declined status). Sets that attempt's
-   `outcome = manual_review` and `manual_review_requested_at`, then recomputes. Staff then
-   approve or decline that attempt.
+   - `canRetry`: `POST /verification/sessions` would start **or resume** a session right now. It
+     comes from the same eligibility check that endpoint uses (V1, V13, V2, V3), so the two can
+     never disagree.
+   - `retriesLeftToday`: `3 −` sessions created in the rolling 24 hours (V3), never below 0.
+   - `canRequestManualReview`: the manual review request (step 7) would be accepted now.
+   - `reasonCode` (user-safe), only when `status = declined`: `UNDERAGE` (V4) or
+     `DOCUMENT_NOT_VERIFIED` (any Didit decline). Specific codes from Didit's warnings (e.g.
+     `PHOTO_UNCLEAR`, `DOCUMENT_EXPIRED`) come after T2.9 shows real declines.
+   - Never reveal blocking reasons: a `blocked` user gets `status: blocked`, `canRetry: false`,
+     `retriesLeftToday: 0`, `canRequestManualReview: false` and no `reasonCode`. `manual_review`
+     has no `reasonCode` either.
+7. **Manual review request:** `POST /verification/manual-review-request` (no body) — allowed only
+   when the V3 limit is reached **and** the most recent attempt was declined **by Didit**
+   (`outcome = declined`, `provider_status = 'Declined'`, not decided by staff; a staff decline
+   was already a review, and staff-declined users keep starting new sessions under the normal V3
+   rules). Sets that attempt's `outcome = manual_review` and `manual_review_requested_at`, then
+   recomputes, and returns 200 with the new status (step 6). Errors: 409 `ALREADY_VERIFIED`,
+   409 `VERIFICATION_IN_REVIEW` (also for a repeated request), 403 `VERIFICATION_UNAVAILABLE`
+   (blocked, neutral), 409 `MANUAL_REVIEW_NOT_AVAILABLE`. Staff then approve or decline that
+   attempt. The V3 429's `manualReviewAvailable` uses the same rule.
 
 ### Status mapping (Didit → our attempt outcome)
 
