@@ -166,6 +166,39 @@ Runs every 5 minutes when `JOBS_ENABLED=true` (the default in `.env`).
 | Then `POST /verification/manual-review-request` | 200, `status: "manual_review"`; a second request → 409 `VERIFICATION_IN_REVIEW`; starting a session → 409 `VERIFICATION_IN_REVIEW` |
 | `POST /verification/manual-review-request` below the limit | 409 `MANUAL_REVIEW_NOT_AVAILABLE` |
 
+## Resetting verification data (development only)
+
+The sandbox returns the **same fake identity** for every session, so after the first approval
+V6 blocks every new test account ("identifier already approved for another user"). To start the
+verification side over without losing your accounts:
+
+```
+npm run dev:reset-verifications
+```
+
+1. Stop `npm run start:dev` first, so the polling job isn't mid-run.
+2. It prints the database name and how many rows it will delete, then asks you to type
+   `reset` (anything else aborts with nothing changed).
+3. Deletes **every** row of `identity_hashes`, `banned_identities`,
+   `verification_webhook_events` and `identity_verifications`, and sets every user to
+   `verification_status = 'not_verified'` with `verified_at`, `full_name` and `date_of_birth`
+   cleared, in one transaction.
+4. **Kept:** users and their `status`, sign-in sessions (refresh tokens), staff accounts and
+   `admin_actions` (append-only; old rows now point at deleted attempts). A **banned** user stays
+   banned: unban them with `POST /admin/users/:id/unban` (6. Admin in Postman) if needed.
+
+It refuses to run unless `NODE_ENV` is exactly `development` and the database name doesn't end
+in `_prod` (checked both in `DATABASE_URL` and on the connected database). A late Didit webhook
+for a deleted session is ignored (`Ignored a Didit decision for unknown session …` in the log).
+
+| Check | Expect |
+| --- | --- |
+| Approve one account, then a second one in the sandbox | the second ends `blocked` (V6) |
+| `npm run dev:reset-verifications`, type `reset` | the counts it removed |
+| `GET /verification/status` (any account) | `status: "not_verified"`, `retriesLeftToday: 3` |
+| Verify another account | `approved` again |
+| `NODE_ENV=test npm run dev:reset-verifications` | `Refusing to reset: NODE_ENV must be "development" …`, nothing deleted |
+
 ## Useful while testing
 
 - Look at the data: `docker compose exec postgres psql -U rental -d rental`, e.g.

@@ -25,7 +25,8 @@
     "migration:run": "npm run build && typeorm migration:run -d dist/database/data-source.js",
     "migration:revert": "npm run build && typeorm migration:revert -d dist/database/data-source.js",
     "migration:show": "npm run build && typeorm migration:show -d dist/database/data-source.js",
-    "admin:create": "npm run build && node dist/cli/create-admin.js"
+    "admin:create": "npm run build && node dist/cli/create-admin.js",
+    "dev:reset-verifications": "npm run build && node dist/cli/reset-verifications.js"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",
