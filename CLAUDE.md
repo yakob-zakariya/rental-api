@@ -75,6 +75,7 @@ npm run migration:run
 npm run migration:revert
 npm run migration:show
 npm run admin:create -- --email <email> [--role super_admin]   # staff account; password prompted (or ADMIN_PASSWORD)
+npm run dev:reset-verifications   # DEV ONLY: wipe all verification data, users → not_verified (asks to confirm)
 ```
 
 ## Hard rules — never break these
