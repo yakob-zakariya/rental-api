@@ -105,11 +105,11 @@ Tick each box when it's merged and you've understood the code.
 
 ## Step 4 — Thin Flutter app (repo: `rental-app`)
 
-- [ ] **T4.1 Project setup.** Flutter project, its own `CLAUDE.md`, API client, secure token storage,
-      auto refresh.
-- [ ] **T4.2 Login.** Phone entry + OTP screens.
-- [ ] **T4.3 Verification.** Status screen, start verification (Didit SDK or hosted page), result
-      screens for each state.
+- [x] **T4.1 Project setup.** Flutter project, its own `CLAUDE.md`, API client, secure token storage,
+      auto refresh. Done in `rental-app` A0–A2.
+- [x] **T4.2 Login.** Phone entry + OTP screens. Done in `rental-app` A6–A8.
+- [x] **T4.3 Verification.** Status screen, start verification (Didit SDK or hosted page), result
+      screens for each state. Done in `rental-app` A9–A10.
 - [x] **T4.4 End-to-end on a real phone** through the tunnel. Done in `rental-app` A12 (sandbox,
       through the tunnel) and A13 (live Didit, real Fayda card, second account blocked).
 
