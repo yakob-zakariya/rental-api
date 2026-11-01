@@ -64,7 +64,7 @@ item with a `node_id` and its own feature-level `status`. Source:
 | `document_number` | string | OCR |
 | `personal_number` | string | OCR "personal/national identifier" |
 | `issuing_state` | **ISO 3166-1 alpha-3** (e.g. `"ESP"`, `"ETH"`) | No conversion needed for V10 |
-| `date_of_birth` | `YYYY-MM-DD` | Calendar for Fayda: open question |
+| `date_of_birth` | `YYYY-MM-DD` | Gregorian, also for Fayda (T2.9) |
 | `full_name`, `first_name`, `last_name` | string | |
 
 **Hard rule 1:** the decision also carries short-lived presigned media URLs (`portrait_image`,
@@ -153,13 +153,20 @@ computed in Python (Unicode, U+2028, nested objects, a whole-valued float).
 
 Configured by the project owner and verified through the Didit API.
 
-- **Application used for development:** "yakobRental (Sandbox)". The live application is not
-  used until launch. Ignore the live app's "Compliance workflow" (it includes paid AML).
+- **Application used for development:** "yakobRental (Sandbox)". Ignore the live app's
+  "Compliance workflow" (it includes paid AML).
+- **Live application** ("My Application", `15a852d3-2554-4de8-9c38-f2f1724a7c06`), set up for
+  T2.9 on 2026-11-01: its "Free KYC" workflow `bd8242af-f0d5-4da0-b09c-6d2ac4185d03` is
+  **published** as an exact copy of the sandbox one (same steps, settings, accepted documents and
+  fixed branch rule; compared setting by setting: 0 differences). Webhook destination: the dev
+  tunnel `/webhooks/didit` (v3, `status.updated` + `data.updated`); its events were received and
+  processed with `DIDIT_ENVIRONMENT=live`. For everyday development `.env` points back at the
+  sandbox.
 - **Workflow:** "Free KYC", ID `5d5368e7-3151-4cd6-b92d-d3efd0b4b00b`, **published**.
   Features: OCR (ID verification) → passive liveness → face match → IP analysis. All within the
   free tier; no AML.
 - **Accepted documents:**
-  - Ethiopia: identity card, subtype `ID_CARD_GENERIC` only (expected to be Fayda; unconfirmed),
+  - Ethiopia: identity card, subtype `ID_CARD_GENERIC` only (the physical Fayda card; confirmed in T2.9),
     and passports.
   - All other countries (212): passports only.
   - Disabled: Ethiopian driving licences, tax cards, refugee IDs, residence permits, and the
@@ -181,13 +188,15 @@ billed (within the free tier for "Free KYC").
 
 ### Checklist for the LIVE application (before T2.9, and again before launch)
 
-- [ ] Recreate the workflow in the live app with the same features (OCR → passive liveness →
+- [x] Recreate the workflow in the live app with the same features (OCR → passive liveness →
       face match → IP analysis; no AML) and the same accepted documents (Ethiopia:
-      `ID_CARD_GENERIC` + passports; elsewhere passports only; everything else disabled),
-      updated with whatever T2.9 found about Fayda.
-- [ ] Check the final-status branch rules (no `location.status`).
-- [ ] Publish it; put its ID in production's `DIDIT_WORKFLOW_ID`.
-- [ ] Create the live webhook destination: production URL `/webhooks/didit`,
+      `ID_CARD_GENERIC` + passports; elsewhere passports only; everything else disabled).
+      Done 2026-11-01; T2.9 needed no changes to it.
+- [x] Check the final-status branch rules (no `location.status`).
+- [x] Publish it (done). Put its ID (`bd8242af-f0d5-4da0-b09c-6d2ac4185d03`) in production's
+      `DIDIT_WORKFLOW_ID`.
+- [ ] Create the live webhook destination for **production** (T2.9 used one pointing at the dev
+      tunnel; replace or add one): production URL `/webhooks/didit`,
       `webhook_version: "v3"`, `subscribed_events: ["status.updated", "data.updated"]`; store the
       `secret_shared_key` as production's `DIDIT_WEBHOOK_SECRET`.
 - [ ] Production `DIDIT_API_KEY` = the live app's key; `DIDIT_ENVIRONMENT=live`.
@@ -197,7 +206,9 @@ billed (within the free tier for "Free KYC").
 
 ---
 
-## 5. Open questions — confirm in T2.9 (in the LIVE app; the sandbox can't answer these)
+## 5. Real-document findings (T2.9, LIVE app, 2026-11-01)
+
+Answered from two live sessions with one physical Fayda card on two accounts.
 
 Answer them with `npm run didit:inspect -- --latest` (or an attempt / session id). It uses the
 Didit app in `.env` and prints only the decision's **shape**:
@@ -210,18 +221,40 @@ Didit app in `.env` and prints only the decision's **shape**:
 Never names, numbers, dates of birth, addresses, image URLs or warning descriptions; other fields
 are listed by name only.
 
-- [ ] **Fayda subtype:** is a physical Fayda card classified as `ID_CARD_GENERIC`? If a real card
-      is rejected as unsupported, the subtype is different and the workflow needs updating.
-- [ ] **Fayda numbers:** which come back (FIN, FAN or both), in which field (`document_number` or
-      `personal_number`), and their exact lengths. Starting rule (T2.6): 12 digits → `fayda_fin`,
-      16 digits → `fayda_fan`; anything else → V8 `manual_review`, never guessed.
-- [ ] **Fayda date of birth:** Gregorian or Ethiopian calendar? (V4 depends on it.)
-- [ ] **Paper credential / digital Fayda:** accepted? Probably not — Didit's document liveness
-      rejects "screen captures of digital documents", "photos of documents displayed on screens"
-      and "printed document copies", and requires physical documents
+- [x] **Fayda subtype:** the physical card is `document_type: "Identity Card"`,
+      `document_subtype: "ID_CARD_GENERIC"`, `issuing_state: "ETH"`. The workflow's Ethiopian
+      ID-card entry is right; no change.
+- [x] **Fayda numbers:** **FAN only.** `document_number` is 16 digits; `personal_number` is
+      absent; no 12-digit FIN anywhere (`extra_fields` has only `first_surname`,
+      `full_name_non_latin` and `state`). Same on both sessions. The rule stays: 16 digits →
+      `fayda_fan`; the 12 → `fayda_fin` branch is kept (harmless, and covers a FIN appearing in
+      `personal_number` later); anything else → V8. V6 therefore matches Fayda users on the FAN.
+- [x] **Fayda date of birth:** **Gregorian.** `YYYY-MM-DD`; the owner confirmed it matches their
+      Gregorian birthday (Didit's own `age` agrees with ours). V4 needs no conversion.
+- [ ] **Paper credential / digital Fayda:** not tested in T2.9 (moved to the pre-launch checklist
+      in `docs/product-overview.md` §14). Expected rejected: Didit's document liveness rejects
+      "screen captures of digital documents", "photos of documents displayed on screens" and
+      "printed document copies"
       ([ID verification overview](https://docs.didit.me/core-technology/id-verification/overview)).
-- [ ] **Kebele / regional IDs:** disabled in the workflow; confirm one is actually rejected (or at
-      worst lands in `manual_review` because its number isn't 12 or 16 digits).
+- [ ] **Kebele / regional IDs, driving licences:** not tested in T2.9 (pre-launch checklist).
+      Disabled in the workflow; at worst one would land in `manual_review` (its number isn't 16
+      or 12 digits, V8).
+
+Also confirmed:
+- **V6:** the second account with the same card ended `blocked` (`DUPLICATE_IDENTITY`), with
+  the first account still `approved`.
+- **Hard rule 1:** `identity_hashes` holds only 64-hex HMACs (`fayda_fan`); no 12- or 16-digit
+  number appears in any text/JSON column of `identity_verifications`, `identity_hashes`,
+  `verification_webhook_events`, `users`, `banned_identities` or `admin_actions`.
+- **Webhooks in live:** every `status.updated` (Not Started → In Progress → Approved) arrived
+  within seconds and was processed without error.
+- **Warnings seen:** only information-level duplicate signals (`POSSIBLE_DUPLICATED_USER`,
+  `POSSIBLE_FRONT_CAMERA_DUPLICATED_FACE` on the document; `DUPLICATED_FACE` on liveness;
+  `DUPLICATED_DEVICE_FINGERPRINT` / `DUPLICATED_IP_ADDRESS` on IP analysis), all `NO_ACTION`
+  in the workflow. No real decline was seen, so `reasonCode` still maps every Didit decline to
+  `DOCUMENT_NOT_VERIFIED`.
+- **Amharic name:** returned as `extra_fields.full_name_non_latin`, but its OCR varied between
+  the two scans of the same card (5 vs 10 characters). Not used.
 
 Background: Ethiopia/Fayda isn't mentioned in Didit's developer docs. Didit's marketing pages
 list Fayda as supported ("while enrollment expands" in some languages) and say there is no
@@ -231,6 +264,11 @@ government-database lookup for Ethiopia, so Fayda checks are document-based
 ### Open option (not decided, nothing built)
 
 - Restrict document capture to the live camera only (no file upload).
+- **Passport + Fayda limitation:** V6 matches on ID numbers, so one person with both a passport
+  and a Fayda card can verify two accounts (the identifiers differ). Didit's face-based duplicate
+  signals could close this.
+- **Idea:** a `DUPLICATED_FACE` signal from Didit could send the session to `manual_review`
+  instead of approving it. Not now; just recorded.
 
 ---
 

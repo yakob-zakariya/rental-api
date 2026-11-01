@@ -220,5 +220,9 @@ Things that are fine for local development but must be settled before (or when) 
 - **The production DB user must not have TRUNCATE (or UPDATE/DELETE) on admin_actions.**
 - **Test the production /docs HTTP Basic login end to end once a real SMS provider allows
   NODE_ENV=production.**
+- **Test the documents T2.9 didn't, in the live Didit app** (`docs/didit-integration.md` §5):
+  the printed paper Fayda credential, the digital Fayda (on a screen), and one document that
+  should be rejected (a kebele ID or a driving licence). Expected: all rejected (or at worst
+  `manual_review`), never `approved`.
 - **Swagger in production.** Off unless `SWAGGER_ENABLED=true`; if enabled, the `/docs` page must
   be behind staff auth first (T3.1).

@@ -77,7 +77,7 @@ Tick each box when it's merged and you've understood the code.
 - [x] **T2.7 Polling job.** Scheduled check for stuck sessions, 24-hour expiry (V16); tests.
 - [x] **T2.8 Status + manual review request.** `GET /verification/status`,
       `POST /verification/manual-review-request`; tests.
-- [ ] **T2.9 Real-world check.** Tunnel + the Didit **LIVE** app + your own ID (spec section 8).
+- [x] **T2.9 Real-world check.** Tunnel + the Didit **LIVE** app + your own ID (spec section 8).
       The sandbox app only simulates verifications ("no real checks are performed"), so first set
       up the live app like the sandbox (same workflow and webhook destination; checklist in
       `docs/didit-integration.md`) and point `.env` at it (`DIDIT_ENVIRONMENT=live`, live
@@ -86,6 +86,9 @@ Tick each box when it's merged and you've understood the code.
       `ID_CARD_GENERIC`; which Fayda numbers come back (FIN, FAN, both), in which field and with
       what lengths; the DOB calendar; whether the paper credential or digital Fayda is accepted.
       Confirm other documents are rejected; update V4/V10, the FIN/FAN rule and the `kind` enum if needed.
+      Done 2026-11-01: Fayda = `ID_CARD_GENERIC`, FAN only (16 digits), Gregorian DOB, V6 blocks
+      the second account; no rule changes. Paper/digital Fayda and a rejected document moved to
+      the pre-launch checklist (`docs/product-overview.md` §14). Findings: `docs/didit-integration.md` §5.
 
 ## Step 3 — Staff side
 
