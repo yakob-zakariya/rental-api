@@ -231,14 +231,16 @@ are listed by name only.
       `personal_number` later); anything else → V8. V6 therefore matches Fayda users on the FAN.
 - [x] **Fayda date of birth:** **Gregorian.** `YYYY-MM-DD`; the owner confirmed it matches their
       Gregorian birthday (Didit's own `age` agrees with ours). V4 needs no conversion.
-- [ ] **Paper credential / digital Fayda:** not tested in T2.9 (moved to the pre-launch checklist
-      in `docs/product-overview.md` §14). Expected rejected: Didit's document liveness rejects
-      "screen captures of digital documents", "photos of documents displayed on screens" and
-      "printed document copies"
+- [ ] **Paper credential / digital Fayda:** not tested in T2.9 (pre-launch checklist in
+      `docs/product-overview.md` §14). These are genuine Fayda documents many people use, so
+      **we want them accepted**; the test is whether Didit does. Risk: Didit's document liveness
+      rejects "screen captures of digital documents", "photos of documents displayed on screens"
+      and "printed document copies"
       ([ID verification overview](https://docs.didit.me/core-technology/id-verification/overview)).
+      If it rejects them, that needs a product decision before launch.
 - [ ] **Kebele / regional IDs, driving licences:** not tested in T2.9 (pre-launch checklist).
-      Disabled in the workflow; at worst one would land in `manual_review` (its number isn't 16
-      or 12 digits, V8).
+      These must be rejected: they're disabled in the workflow, and at worst one would land in
+      `manual_review` (its number isn't 16 or 12 digits, V8).
 
 Also confirmed:
 - **V6:** the second account with the same card ended `blocked` (`DUPLICATE_IDENTITY`), with
