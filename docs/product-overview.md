@@ -221,8 +221,11 @@ Things that are fine for local development but must be settled before (or when) 
 - **Test the production /docs HTTP Basic login end to end once a real SMS provider allows
   NODE_ENV=production.**
 - **Test the documents T2.9 didn't, in the live Didit app** (`docs/didit-integration.md` §5):
-  the printed paper Fayda credential, the digital Fayda (on a screen), and one document that
-  should be rejected (a kebele ID or a driving licence). Expected: all rejected (or at worst
-  `manual_review`), never `approved`.
+  - **The printed paper Fayda credential and the digital Fayda** are genuine Fayda documents
+    that many people use, so the goal is for them to be **accepted**. The test finds out whether
+    Didit accepts them. If Didit rejects them (its document-liveness check may treat a printout
+    or a screen as a copy), we need a **product decision before launch**.
+  - **A kebele ID and a driving licence** must be rejected (or at worst land in
+    `manual_review`), never `approved`.
 - **Swagger in production.** Off unless `SWAGGER_ENABLED=true`; if enabled, the `/docs` page must
   be behind staff auth first (T3.1).

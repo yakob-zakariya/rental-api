@@ -87,8 +87,8 @@ Tick each box when it's merged and you've understood the code.
       what lengths; the DOB calendar; whether the paper credential or digital Fayda is accepted.
       Confirm other documents are rejected; update V4/V10, the FIN/FAN rule and the `kind` enum if needed.
       Done 2026-11-01: Fayda = `ID_CARD_GENERIC`, FAN only (16 digits), Gregorian DOB, V6 blocks
-      the second account; no rule changes. Paper/digital Fayda and a rejected document moved to
-      the pre-launch checklist (`docs/product-overview.md` §14). Findings: `docs/didit-integration.md` §5.
+      the second account; no rule changes. Paper/digital Fayda (to be accepted) and a document that
+      must be rejected moved to the pre-launch checklist (`docs/product-overview.md` §14). Findings: `docs/didit-integration.md` §5.
 
 ## Step 3 — Staff side
 
@@ -110,7 +110,8 @@ Tick each box when it's merged and you've understood the code.
 - [ ] **T4.2 Login.** Phone entry + OTP screens.
 - [ ] **T4.3 Verification.** Status screen, start verification (Didit SDK or hosted page), result
       screens for each state.
-- [ ] **T4.4 End-to-end on a real phone** through the tunnel.
+- [x] **T4.4 End-to-end on a real phone** through the tunnel. Done in `rental-app` A12 (sandbox,
+      through the tunnel) and A13 (live Didit, real Fayda card, second account blocked).
 
 ---
 
