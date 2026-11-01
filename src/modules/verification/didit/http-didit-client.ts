@@ -83,6 +83,18 @@ export class HttpDiditClient extends DiditClient {
     };
   }
 
+  /**
+   * The untrimmed decision, for `npm run didit:inspect` only: it carries image URLs and personal
+   * data, so the caller must reduce it to a shape at once and never log or store it. Not part of
+   * DiditClient, so the app can't use it.
+   */
+  getRawDecision(sessionId: string): Promise<Json> {
+    return this.request(
+      'GET',
+      `/v3/session/${encodeURIComponent(sessionId)}/decision/`,
+    );
+  }
+
   private async request(
     method: 'GET' | 'POST',
     path: string,

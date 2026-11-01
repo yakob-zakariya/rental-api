@@ -199,6 +199,14 @@ for a deleted session is ignored (`Ignored a Didit decision for unknown session 
 | Verify another account | `approved` again |
 | `NODE_ENV=test npm run dev:reset-verifications` | `Refusing to reset: NODE_ENV must be "development" …`, nothing deleted |
 
+## Inspecting a Didit decision (no personal data)
+
+`npm run didit:inspect -- --latest` (or `-- <attempt id>` / `-- <Didit session id>`) fetches the
+decision from the Didit app in `.env` and prints only its shape: document type/subtype, country,
+check statuses, warning codes, numbers as masks (`"999999999999" (12 chars)`), the age the date
+of birth implies, and what our decision code would read (identifier kinds, problems). Safe to
+paste into chat. Used for the real-document questions in T2.9 (`docs/didit-integration.md` §5).
+
 ## Useful while testing
 
 - Look at the data: `docker compose exec postgres psql -U rental -d rental`, e.g.
