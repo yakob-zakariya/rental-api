@@ -199,6 +199,17 @@ billed (within the free tier for "Free KYC").
 
 ## 5. Open questions — confirm in T2.9 (in the LIVE app; the sandbox can't answer these)
 
+Answer them with `npm run didit:inspect -- --latest` (or an attempt / session id). It uses the
+Didit app in `.env` and prints only the decision's **shape**:
+- document type and subtype, country, check statuses and scores, warning codes;
+- numbers as masks (`"999999999999" (12 chars)`), including any inside `extra_fields` /
+  `extracted_data`;
+- the date of birth's format and the age it implies if Gregorian, next to Didit's own `age`;
+- what our decision code would read from it (identifier kinds and problems).
+
+Never names, numbers, dates of birth, addresses, image URLs or warning descriptions; other fields
+are listed by name only.
+
 - [ ] **Fayda subtype:** is a physical Fayda card classified as `ID_CARD_GENERIC`? If a real card
       is rejected as unsupported, the subtype is different and the workflow needs updating.
 - [ ] **Fayda numbers:** which come back (FIN, FAN or both), in which field (`document_number` or
