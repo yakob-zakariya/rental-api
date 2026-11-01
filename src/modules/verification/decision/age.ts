@@ -29,7 +29,7 @@ export function todayIn(timeZone: string, now: Date = new Date()): string {
 
 /**
  * V4: under 18 on `onDate` (both YYYY-MM-DD). Someone born on 29 February turns 18 on 1 March
- * in non-leap years. Treats the date of birth as Gregorian (Fayda's calendar: confirm in T2.9).
+ * in non-leap years. Treats the date of birth as Gregorian (T2.9: Didit returns Fayda's in Gregorian).
  */
 export function isUnder18(dateOfBirth: string, onDate: string): boolean {
   if (!isIsoDate(dateOfBirth) || !isIsoDate(onDate)) {

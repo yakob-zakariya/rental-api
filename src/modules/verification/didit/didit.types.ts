@@ -1,5 +1,5 @@
 // Didit API v3 shapes we rely on. Confirmed against Didit's docs on 2026-10-30; details, links and
-// open questions are in docs/didit-integration.md.
+// real-document findings (T2.9) are in docs/didit-integration.md.
 
 /**
  * Session statuses, exactly as Didit sends them (case-sensitive). Kept as raw strings elsewhere
@@ -46,7 +46,7 @@ export interface DiditIdVerification {
   personalNumber: string | null;
   /** ISO 3166-1 alpha-3, e.g. "ETH". */
   issuingState: string | null;
-  /** YYYY-MM-DD. Calendar for Fayda unconfirmed (T2.9). */
+  /** YYYY-MM-DD, Gregorian (confirmed for Fayda in T2.9). */
   dateOfBirth: string | null;
   fullName: string | null;
   firstName: string | null;

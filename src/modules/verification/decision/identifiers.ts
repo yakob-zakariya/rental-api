@@ -38,8 +38,9 @@ export interface ExtractedIdentity {
   problems: IdentityProblem[];
 }
 
-// Starting rule for Fayda numbers (confirm in T2.9): 12 digits = FIN, 16 digits = FAN.
-// Anything else is ignored, never guessed (it leads to V8 if nothing else is usable).
+// Fayda numbers: 12 digits = FIN, 16 digits = FAN. Anything else is ignored, never guessed (it
+// leads to V8 if nothing else is usable). T2.9: the physical card returns only the FAN, in
+// document_number; the FIN branch stays in case one appears (e.g. in personal_number).
 const FAYDA_BY_LENGTH: Record<
   number,
   IdentityKind.FaydaFin | IdentityKind.FaydaFan

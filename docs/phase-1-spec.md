@@ -142,7 +142,7 @@ All IDs are UUIDs; all timestamps are `timestamptz`.
 | id | uuid PK | |
 | verification_id | uuid FK → identity_verifications | indexed |
 | user_id | uuid FK → users | indexed |
-| kind | enum `fayda_fin`,`fayda_fan`,`passport` | Only accepted documents (which Fayda numbers Didit returns: confirm in T2.9) |
+| kind | enum `fayda_fin`,`fayda_fan`,`passport` | Only accepted documents (T2.9: the physical Fayda card returns the FAN only) |
 | hash | varchar | See V10 (passports include the issuing country); indexed |
 | is_approved | boolean | default false; mirrors whether the attempt's outcome is `approved` (kept in sync in the same transaction) — needed for the partial unique index |
 | created_at | timestamptz | |
@@ -350,7 +350,7 @@ banned again after being lifted).
    - `reasonCode` (user-safe), only when `status = declined`: `UNDERAGE` (V4), the staff decline
      code (`PHOTO_UNCLEAR`, `DOCUMENT_EXPIRED`, `DOCUMENT_NOT_ACCEPTED`, `DOCUMENT_NOT_VERIFIED`,
      `UNDERAGE`), or `DOCUMENT_NOT_VERIFIED` (any Didit decline). Specific codes from Didit's warnings (e.g.
-     `PHOTO_UNCLEAR`, `DOCUMENT_EXPIRED`) come after T2.9 shows real declines.
+     `PHOTO_UNCLEAR`, `DOCUMENT_EXPIRED`) come once real declines show clear codes (none seen in T2.9).
    - Never reveal blocking reasons: a `blocked` user gets `status: blocked`, `canRetry: false`,
      `retriesLeftToday: 0`, `canRequestManualReview: false`, `retryAvailableAt: null` and no
      `reasonCode`. `manual_review`
@@ -417,8 +417,8 @@ approve/decline, unban). It derives the status from the attempt history:
   until the oldest counted attempt leaves the 24-hour window. The limit applies only when the
   user has no `pending` attempt to resume (see V2).
 - **V4 — Age:** under 18 on the decision date (today's date in Africa/Addis_Ababa) → `declined`,
-  reason `UNDERAGE`. Someone born on 29 February turns 18 on 1 March. (T2.9 confirms whether Didit
-  returns a Fayda date of birth in the Gregorian or Ethiopian calendar; convert if needed.)
+  reason `UNDERAGE`. Someone born on 29 February turns 18 on 1 March. (T2.9 confirmed Didit returns
+  a Fayda date of birth in the Gregorian calendar; no conversion.)
 - **V5 — Banned identity:** **any** of the attempt's `identity_hashes` matches an active
   (`lifted_at IS NULL`) row in `banned_identities` → attempt `blocked`, user `blocked`. The user
   sees a neutral message.
@@ -436,8 +436,9 @@ approve/decline, unban). It derives the status from the attempt history:
 - **V8 — Missing data:** Didit approved but returned no usable identifier (no number that maps to
   a known `kind`, e.g. an unexpected document type slipped through the workflow), no date of
   birth, or a passport with no issuing country → `manual_review`, flagged `MISSING_DATA`.
-  Fayda numbers: 12 digits → `fayda_fin`, 16 digits → `fayda_fan` (confirm in T2.9); any other
-  number is ignored, never guessed.
+  Fayda numbers: 12 digits → `fayda_fin`, 16 digits → `fayda_fan`; any other number is
+  ignored, never guessed. (T2.9: the physical card returns only the 16-digit FAN, in
+  `document_number`.)
 - **V17 — Consistent documents:** identifiers are collected from **every** document in the
   decision. If documents disagree on date of birth, or on name after V7 normalisation →
   `manual_review`, flagged `DOCUMENT_MISMATCH` (a document without a name or date of birth doesn't

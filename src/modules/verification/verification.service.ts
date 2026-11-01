@@ -431,7 +431,7 @@ export class VerificationService {
       [userId],
     );
     // Our own and staff reasons are user-safe as they are; anything else (e.g. DIDIT_DECLINED) is
-    // generic. Didit's warnings aren't mapped yet (after T2.9).
+    // generic. Didit's warnings aren't mapped yet (no real declines seen in T2.9).
     return row?.decline_reason && USER_SAFE_REASONS.has(row.decline_reason)
       ? (row.decline_reason as VerificationReasonCode)
       : VerificationReasonCode.DocumentNotVerified;
