@@ -9,14 +9,20 @@ without paying a broker (delala) one month's rent. Trust comes from **verified i
 **always-fresh listings**, and **tenant feedback after viewings** — not from ownership documents.
 
 - Full product context and all decisions: `docs/product-overview.md`
-- What we are building right now: `docs/phase-1-spec.md`
-- Task breakdown for this phase: `docs/phase-1-tasks.md`
+- Phases until launch: `docs/roadmap.md`
+- What we are building right now: the active phase's spec and task list (see "Current phase")
 
-## Current phase: Phase 1 — Foundation, accounts, identity verification
+## Current phase
 
-Only build what `docs/phase-1-spec.md` describes. Listings, contact requests, search, maps,
-payments, chat and notifications are **out of scope** for now. If a task seems to need them, stop
-and ask instead of building them.
+The phases until launch, and what comes after, are in `docs/roadmap.md`.
+
+- **Done:** Phase 1 — accounts and identity verification (`docs/phase-1-spec.md`, still the
+  reference for those modules).
+- **Active:** Phase 2 — listings. Its spec, `docs/phase-2-spec.md`, isn't written yet; until
+  it is approved, only write docs, no Phase 2 code.
+
+Build only what the active spec describes. If a task seems to need something the roadmap puts
+in a later phase, stop and ask.
 
 ## Stack
 
@@ -124,7 +130,7 @@ npm run dev:reset-verifications   # DEV ONLY: wipe all verification data, users 
 
 1. **Plan before coding.** For any task, first propose a short plan (files to touch, entities,
    migrations, tests) and wait for approval.
-2. **One small task at a time**, from `docs/phase-1-tasks.md`. Don't start the next task unprompted.
+2. **One small task at a time**, from the active phase's task list. Don't start the next task unprompted.
 3. **Tests for business rules come with the code**, not later. Every rule in the spec's
    "Business rules" section must have a test.
 4. **Read the real docs** for Didit (https://docs.didit.me) before writing integration code.
@@ -133,13 +139,8 @@ npm run dev:reset-verifications   # DEV ONLY: wipe all verification data, users 
    and suggest a commit message.
 6. If the spec is unclear or seems wrong, **ask** — don't invent behaviour.
 
+## Current mode: development, learning along the way
 
-
-## Current mode: learning (until I say otherwise)
-
-I'm studying this repo to understand code I didn't write myself. Unless I explicitly
-ask you to write code:
-- don't change any files;
-- explain with file paths and line numbers, in plain words, relating it to Laravel
-  and Next.js where that helps;
-- when I share code I wrote, review it and point out problems, but don't rewrite it.
+Build features following "How to work in this repo". After each feature, explain in detail
+how it works and why, with file paths and line numbers, relating it to Laravel and Next.js
+where that helps.
