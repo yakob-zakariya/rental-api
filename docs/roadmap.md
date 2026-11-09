@@ -17,7 +17,7 @@ goes there and this file is updated to match.
 | Phase | Purpose | Main features |
 | --- | --- | --- |
 | **1 — Accounts and verification** (done) | Know who everyone is | Phone OTP, access/refresh tokens, Didit KYC, staff accounts, bans, audit log |
-| **2 — Listings** (active) | Landlords publish homes; anyone can find them | Addis Ababa areas, properties, photos with photo hashing (reused images), listing states, **staff review of every listing** with a small review web page, the 2-active-listings rule, weekly "still available?" checks by **push (FCM)**, exact + approximate location, browse / filters / "near me" |
+| **2 — Listings** (active) | Landlords publish homes; anyone can find them | Addis Ababa sub-cities and neighbourhoods, residential properties, photos with photo hashing (reused images), listing states, **staff review of every listing** with a small review web page, a reviewer flag above 2 active listings plus a hard cap (10), weekly "still available?" checks by **push (FCM)**, exact + approximate location, browse / filters / "near me" |
 | **3 — Contact, chat and feedback** | A tenant reaches a landlord without a broker | Contact requests with a **quota** (config value); the landlord accepts, which reveals the **phone number and exact location** and **starts a chat**; push for new messages; viewing feedback prompts by push; "Rented" + the tenant's confirmation |
 | **4 — Reports** | Tenants can flag a bad listing to staff | A tenant reports a listing, staff decide, staff can use the existing ban (Phase 1). No automatic strikes. |
 | **5 — Launch preparation** | Safe to run in public | Deployment checklist (overview §14, including a real SMS provider); lost-SIM account move; pre-launch review with you (below); live tests of the remaining documents |
@@ -57,7 +57,7 @@ reports (a tenant, about a listing) ──► staff decision ──► optionall
 | Chat, from an accepted contact request | Automatic strikes (three upheld reports → ban) |
 | Push notifications (FCM); SMS for OTP only | Camera-only photos; "New lister" probation (covered by reviewing every listing) |
 | Staff review of every listing; Swagger + a small listing-review page | Next.js web admin |
-| Photo hashing; the 2-active-listings rule | Seeding photo hashes from Telegram rental channels |
+| Photo hashing; a reviewer flag above 2 active listings, hard cap of 10 (config) | Seeding photo hashes from Telegram rental channels |
 | Simple reports decided by staff | Public reviews from confirmed rentals (much later, if ever) |
 | Contact quota (free, config value) | Tenant Search Pass, featured listings |
 | English and Amharic | Other languages (`om` is already in `preferred_language`); other cities |
@@ -122,5 +122,4 @@ Details are in `product-overview.md`.
   requests a code for the first time we don't know their language yet.
 - **Q14 (Phase 4).** Who can report a listing: any signed-in user, a verified one, or only a
   tenant with a contact request on it? Can the landlord respond to a report?
-- Phase 2 questions (for example the exact meaning of the 2-active-listings rule) are in
-  `phase-2-spec.md`.
+- Phase 2's questions (P2-1–P2-15, T-1–T-4) are decided; see `phase-2-spec.md` section 12.

@@ -18,8 +18,7 @@ The phases until launch, and what comes after, are in `docs/roadmap.md`.
 
 - **Done:** Phase 1 — accounts and identity verification (`docs/phase-1-spec.md`, still the
   reference for those modules).
-- **Active:** Phase 2 — listings. Its spec, `docs/phase-2-spec.md`, isn't written yet; until
-  it is approved, only write docs, no Phase 2 code.
+- **Active:** Phase 2 — listings. Spec: `docs/phase-2-spec.md`; tasks: `docs/phase-2-tasks.md`.
 
 Build only what the active spec describes. If a task seems to need something the roadmap puts
 in a later phase, stop and ask.

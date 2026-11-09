@@ -45,8 +45,8 @@ Differentiators:
 | --- | --- |
 | Browse listings | Anyone, no account |
 | Draft a listing | Logged in |
-| Publish a listing | Verified + active + under active-listing limit; goes live only after staff review |
-| Edit/remove a listing | Verified + is the lister |
+| Publish a listing | Verified + active + under the active-listing cap (config, 10); goes live only after staff review |
+| Edit/close a listing | Is the lister (some edits send it back to review: §6) |
 | Request a contact | Verified + active + has quota |
 | Report a listing | A tenant (who exactly counts as one: to design) |
 | Give viewing feedback | Is the tenant on that contact request |
@@ -64,7 +64,8 @@ Three separate layers:
 
 - **Ownership documents are NOT required.** Ethiopian ownership papers are too varied (title
   deed, condo certificate, kebele house, power of attorney). Instead:
-  - the verified lister's real name is shown on listings,
+  - the verified lister's real name is shown on listings: first name, the initial of the
+    father's name, and a verified badge (decided 2026-11-09),
   - tenants confirm after a viewing who they met (owner / representative / broker / unsure),
   - behaviour rules flag suspicious listers,
   - bans attach to the verified identity (ID number hash), so a new phone number doesn't help.
@@ -72,17 +73,21 @@ Three separate layers:
   `lister_relation = representative`; the listing shows it. A mismatch between what the listing
   claims and what the tenant reports is itself a flag.
 
-### Anti-fraud layers for listings (to design in detail)
+### Anti-fraud layers for listings
 
-At launch (decided 2026-11-09): photo hashing and the 2-active-listings rule. Camera-only photos
-are not at launch, and probation is covered by staff reviewing every listing.
+At launch (decided 2026-11-09; details in `phase-2-spec.md`): photo hashing and the
+active-listings flag and cap. Camera-only photos are not at launch, and probation is covered by
+staff reviewing every listing.
 
 - **Not at launch:** camera-only photos in the app (no gallery uploads); record capture time and GPS.
-- **At launch:** perceptual hash (`phash`) on every photo to catch reused images; later, seed
-  hashes from public Telegram rental channels.
-- **At launch:** behaviour rule: one person with more than 2 active listings in different areas →
-  review. (Whether at launch this is a review flag or a hard limit of 2: to confirm in the
-  Phase 2 spec.)
+- **At launch:** perceptual hash (`phash`) on every photo to catch reused images. A match against
+  another lister's photo is a warning to the reviewer, not a refusal. Later, seed hashes from
+  public Telegram rental channels.
+- **At launch:** a lister with more than 2 active listings (`pending_review`, `live`, `stale`), in
+  any area, is flagged to the reviewer. Not a hard limit at 2, because landlords with several
+  units in one compound are common. A separate hard cap (config value, starting at 10).
+- **At launch (added by the Phase 2 spec, not a separate decision):** a description or landmark
+  containing something that looks like a phone number is flagged to the reviewer.
 - **Not at launch (covered by staff reviewing every listing):** probation for new listers: first
   listing labelled "New lister" with limited contact requests until a positive feedback arrives.
 
@@ -106,35 +111,60 @@ are not at launch, and probation is covered by staff reviewing every listing.
   duplicate ID).
 - We never build our own liveness or document-fraud detection.
 
-## 6. Listings (to design)
+## 6. Listings
+
+Detailed in `phase-2-spec.md` (decided 2026-11-09).
 
 - **Property vs listing:** a property is the physical unit; a listing is one period of
   availability. Relisting creates a new listing on the same property, keeping history.
+- **Residential only at launch.** Types: condominium, apartment, villa/house, room in a compound,
+  studio. Property fields: bedrooms, bathrooms, furnished, separate water meter, separate
+  electricity meter, description; size and floor optional; amenities from a small fixed list
+  (parking, gated compound, guard). No utilities field: the meter fields cover it.
+- **Listing fields:** `monthly_rent_birr` (whole birr), `advance_months` (1–12), negotiable,
+  available-from date.
+- **Photos:** at least 3 to submit, at most 12.
 - **Listing states:** `draft → pending_review → live → stale → expired`, plus `rented`,
   `removed`, `rejected`. Every transition is timestamped.
-- **Staff review (decided 2026-11-09):** at launch, every listing goes through staff review
-  (`pending_review`) before it goes live.
-- **Freshness rule:** every 7 days, ask the lister "still available?". No answer in 48 hours →
-  `stale` (hidden; one tap restores it). Stale for 30 days → `expired` (must re-check details).
-  The question is sent by push notification (see §12).
-- **Launch city (decided 2026-11-09):** Addis Ababa only.
+- **Staff review:** at launch, every listing goes through staff review (`pending_review`) before
+  it goes live.
+  - Rejection reasons: unclear photos, photos don't match the description, wrong location,
+    missing information, duplicate listing, "didn't meet our guidelines". The last one is used for
+    suspected fraud, so the lister gets a neutral reason. Staff can add a short note the lister
+    sees.
+  - Staff can take a live listing down, with a reason code, logged in `admin_actions`.
+  - The lister gets a push when a listing is approved or rejected.
+- **Editing:** changing photos, location, landmark or description sends a live or stale listing
+  back to review. Price and available-from changes don't, but are recorded in the listing's
+  history. A rejected listing can be edited and resubmitted.
+- **Freshness rule:** every 7 days, ask the lister "still available?" by push notification. No
+  answer in 48 hours → `stale` (hidden; one tap restores it). Stale for 30 days → `expired`: the
+  lister reopens it by confirming its details, and it goes to review only if something changed.
+- **"Not available":** the lister says why: rented through the app, rented elsewhere, or no
+  longer for rent. Each closes the listing and the reason is recorded.
+- **Launch city:** Addis Ababa only.
 - **Rented:** lister taps "Rented" and picks the tenant; the tenant confirms → a `rentals` row.
-- Price: `monthly_rent_birr` (integer) and `advance_months` (integer) are separate fields.
-- Banning a user must hide all their listings.
+  (Picking the tenant comes with contact requests, Phase 3.)
+- Banning a user hides all their listings. After an unban they come back as `expired`, so the
+  lister must re-confirm them.
 
-## 7. Location and maps (to design)
+## 7. Location and maps
 
 - The landlord sets the location by GPS ("I'm at the property now") or by dragging a pin, plus a
-  plain-language **landmark** field.
+  plain-language **landmark** field. The pin must be inside Addis Ababa.
 - Two points stored on the property: `location` (exact) and `approx_location` (randomly shifted
   200–400 m, generated **once** and stored).
-- The API returns the exact point only to a tenant whose **contact request the landlord has
-  accepted** (decided 2026-11-09; previously "confirmed viewing"); everyone else sees the
-  approximate area.
+- The API returns the exact point **and the landmark** only to a tenant whose **contact request
+  the landlord has accepted** (decided 2026-11-09; previously "confirmed viewing"); everyone else
+  sees the neighbourhood and the approximate area. Search and distances use only the
+  approximate point.
 - Directions: open Google Maps via URL (`https://www.google.com/maps/dir/?api=1&destination=LAT,LNG`)
   with `url_launcher`. No API key needed.
 - In-app map: `flutter_map` + an OpenStreetMap-based tile provider (avoid Google billing early).
-- Areas: a clean `areas` table (city, sub-city, neighbourhood) for filters; PostGIS for "near me".
+- Areas: the 11 sub-cities and their neighbourhoods, in English and Amharic, for filters; PostGIS
+  for "near me". The lister picks the sub-city and the neighbourhood (required). The starting
+  neighbourhood list is `addis-ababa-neighbourhoods.md` (for review); staff add neighbourhoods
+  later.
 
 ## 8. Contact requests, viewings and feedback (to design)
 
@@ -203,20 +233,19 @@ Order of work and the full launch scope: `roadmap.md`.
 - **Push:** Firebase Cloud Messaging, at launch (decided 2026-11-09): freshness checks, feedback
   prompts and chat messages
 - **SMS:** for OTP only. Local SMS gateway behind an interface; logged to console in development
+- **Photo storage:** S3-compatible object storage behind an interface (decided 2026-11-09);
+  MinIO in development; the production provider is chosen before deploying (Cloudflare R2 in the
+  comparison)
 - **Development webhooks:** ngrok (fixed URL) or Cloudflare quick tunnel; plus a background job
   that polls Didit for stuck sessions, so webhooks are not a single point of failure
 
 ## 13. Full data model (direction)
 
-Phase 1 tables are detailed in `phase-1-spec.md`. Later tables:
+Phase 1 tables are detailed in `phase-1-spec.md`, Phase 2 tables in `phase-2-spec.md`
+(`sub_cities`, `neighbourhoods`, `service_area`, `properties`, `property_photos`, `listings`,
+`listing_history`, `availability_checks`, `devices`). Amenities are a fixed enum list on the
+property, not a separate table. Later tables:
 
-- `areas` — city, sub_city, neighbourhood
-- `properties` — lister_id, area_id, type, bedrooms, `location` (geography point),
-  `approx_location`, landmark, `lister_relation` (owner / representative)
-- `property_photos` — property_id, path, phash, captured_at, capture_location
-- `listings` — property_id, monthly_rent_birr, advance_months, status, published_at,
-  last_confirmed_at, expires_at, rented_at
-- `availability_checks` — listing_id, sent_at, responded_at, response
 - `contact_requests` — listing_id, tenant_id, created_at, requires_feedback
 - `viewings` — contact_request_id, proposed/confirmed times, status (after launch, with scheduling)
 - `viewing_feedback` — contact_request_id, viewed, met_person, as_described
@@ -224,7 +253,7 @@ Phase 1 tables are detailed in `phase-1-spec.md`. Later tables:
 - `reports` — reporter_id, listing_id, reported_user_id, reason, details, status,
   landlord_response, decision, handled_by, handled_at
 - `strikes` — user_id, report_id, issued_by, created_at (later, with automatic strikes)
-- `saved_searches`, `favorites`, `devices` (push tokens), `amenities` + pivot
+- `saved_searches`, `favorites`
 - Later: `subscriptions`, `payments`
 
 ## 14. Deployment checklist
@@ -261,3 +290,10 @@ Things that are fine for local development but must be settled before (or when) 
     `manual_review`), never `approved`.
 - **Swagger in production.** Off unless `SWAGGER_ENABLED=true`; if enabled, the `/docs` page must
   be behind staff auth first (T3.1).
+- **Choose the production photo storage.** Compare S3-compatible providers, including Cloudflare
+  R2, on storage and egress cost; set the bucket's public part to live photos only.
+- **Firebase for production.** A production Firebase project (or the same one, checked), the
+  service-account JSON on the server only, and `PUSH_PROVIDER=fcm` (the app refuses to start in
+  production with `console`).
+- **OpenStreetMap attribution.** The Addis Ababa boundary and the map tiles come from
+  OpenStreetMap (ODbL); show the attribution the licence requires.
