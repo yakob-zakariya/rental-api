@@ -10,15 +10,17 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
 
 ## Step 0 — Inputs from you
 
-- [ ] **T0.1 Review the neighbourhood list.** `docs/addis-ababa-neighbourhoods.md`: sub-city
-      assignments, spellings, Amharic names. T1.1 waits for it.
+- [x] **T0.1 Review the neighbourhood list.** `docs/addis-ababa-neighbourhoods.md`: sub-city
+      assignments, spellings, Amharic names. Done 2026-11-09: mostly correct, not complete;
+      seeded as it is.
 
 ## Step 1 — Areas
 
 - [ ] **T1.1 Sub-cities and neighbourhoods.** Entities, migration, seed from the reviewed list;
       `GET /areas` (G7); tests.
-- [ ] **T1.2 Staff add a neighbourhood.** `POST /admin/neighbourhoods`, new audit types, 409
-      `NEIGHBOURHOOD_EXISTS`, moving a property with `propertyId` (G7, S1); tests.
+- [ ] **T1.2 Staff manage neighbourhoods.** Add (with `propertyId` moving a property), list,
+      rename, deactivate, reactivate; never delete; new audit types and detail keys (G7, G8, S1);
+      tests.
 - [ ] **T1.3 Service area.** Get the Addis Ababa boundary from OpenStreetMap, check the licence and
       the attribution it needs, load it in a migration (`service_area`); an `isInsideServiceArea`
       check (G1); tests with points inside, outside and near the edge.

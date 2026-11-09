@@ -1,8 +1,9 @@
 # Addis Ababa — sub-cities and neighbourhoods (starting list, for review)
 
-**Status:** draft for your review, 2026-11-09. Once you've reviewed it, the Phase 2 areas task
-copies it into a seed migration (`sub_cities`, `neighbourhoods`); after that, staff add
-neighbourhoods through `POST /admin/neighbourhoods`, and this file is no longer the source.
+**Status:** reviewed 2026-11-09: mostly correct, not complete, and seeded as it is by Phase 2
+task T1.1 (the "(check)" notes are not seeded; each row goes in under the sub-city it's listed
+under). After that, staff manage neighbourhoods through the admin API (spec G8), and this file is
+no longer the source.
 
 **How this list was made:** from general knowledge, not from an official source. Official units
 are woredas; neighbourhood (sefer) names aren't official, so there is no authoritative list.

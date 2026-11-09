@@ -54,10 +54,12 @@ Seeded with the 11 sub-cities. Unique (`city`, `name_en`).
 | sub_city_id | uuid FK → sub_cities | |
 | name_en, name_am | varchar | |
 | created_by_admin_id | uuid FK → admin_users, null | null for the seeded ones |
+| deactivated_at | timestamptz null | null = active; set by staff (G8) |
 | created_at, updated_at | timestamptz | |
 
-Seeded from `docs/addis-ababa-neighbourhoods.md` once you've reviewed it. Unique
-(`sub_city_id`, `lower(name_en)`).
+Seeded from `docs/addis-ababa-neighbourhoods.md` (reviewed 2026-11-09, seeded as it is: mostly
+correct, not complete). Unique (`sub_city_id`, `lower(name_en)`), deactivated rows included, so
+a deactivated name is reactivated rather than added again. **Never hard-deleted** (G8).
 
 ### `service_area`
 One row: the Addis Ababa city boundary as `geography(MultiPolygon, 4326)`, loaded by a migration
@@ -162,8 +164,10 @@ Written in the same transaction as the change. Staff changes are also in `admin_
 
 ### Changes to Phase 1 tables and code
 - `admin_actions`: new action types `listing.approve`, `listing.reject`, `listing.takedown`,
-  `neighbourhood.create`; new target types `listing`, `neighbourhood`. The `details` allow-list
-  gains `listerNote` (free text, so the S1 ID-number check applies).
+  `neighbourhood.create`, `neighbourhood.update`, `neighbourhood.deactivate`,
+  `neighbourhood.reactivate`; new target types `listing`, `neighbourhood`. The `details`
+  allow-list gains `listerNote` and, for renames, `oldNameEn`, `newNameEn`, `oldNameAm`,
+  `newNameAm` (all free text, so the S1 ID-number check applies).
 - The ban (S5) also closes the user's open listings and deletes their devices (L8, N2).
 
 ## 3. Listings
@@ -308,12 +312,26 @@ Any other transition: 409 `INVALID_LISTING_STATE`. **Active** means `pending_rev
   landmark and the unlisted neighbourhood name, photos, sub-city and neighbourhood (the picked
   one), the approximate point, the lister's name with the verified badge (L7) and
   `lister_relation`.
-- **G7** `GET /areas` (public): sub-cities with their neighbourhoods, both languages.
+- **G7** `GET /areas` (public): sub-cities with their **active** neighbourhoods, both languages.
   `POST /admin/neighbourhoods { subCityId, nameEn, nameAm, propertyId? }` (moderator+, audited)
-  adds one; a name already in that sub-city is 409 `NEIGHBOURHOOD_EXISTS`. With `propertyId`
-  (adding it from the review page), that property is moved to the new neighbourhood and its
-  `unlisted_neighbourhood_name` cleared, in the same transaction; this doesn't count as a lister
-  edit (L5).
+  adds one; a name already in that sub-city (active or not) is 409 `NEIGHBOURHOOD_EXISTS`. With
+  `propertyId` (adding it from the review page), that property is moved to the new neighbourhood
+  and its `unlisted_neighbourhood_name` cleared, in the same transaction; this doesn't count as a
+  lister edit (L5).
+- **G8 Staff manage neighbourhoods** (moderator+; every change audited in the same transaction,
+  S1; nothing is ever hard-deleted):
+  - `GET /admin/neighbourhoods?subCityId=&includeInactive=` — any staff role.
+  - `PATCH /admin/neighbourhoods/:id { nameEn?, nameAm? }` — rename; the S1 audit row records
+    the old and new names. A clash is 409 `NEIGHBOURHOOD_EXISTS`. Properties keep their
+    neighbourhood id, so they show the new name.
+  - `POST /admin/neighbourhoods/:id/deactivate { note? }` — sets `deactivated_at`: hidden from
+    the picker (`GET /areas`) and can't be newly chosen (400 `NEIGHBOURHOOD_INACTIVE`), but
+    properties that already have it keep it, through their own edits too, and still show its
+    name. Already inactive: 409 `NEIGHBOURHOOD_ALREADY_INACTIVE`.
+  - `POST /admin/neighbourhoods/:id/reactivate { note? }` — clears `deactivated_at` (a mistaken
+    deactivation can't be undone by adding the name again). Already active: 409
+    `NEIGHBOURHOOD_ALREADY_ACTIVE`.
+  - Sub-cities are fixed (seeded); staff can't change them.
 
 ## 6. Freshness checks
 
@@ -362,7 +380,8 @@ Any other transition: 409 `INVALID_LISTING_STATE`. **Active** means `pending_rev
 - `POST /admin/listings/:id/approve { version, note? }` — moderator+.
 - `POST /admin/listings/:id/reject { version, reasonCode, listerNote?, note }` — moderator+.
 - `POST /admin/listings/:id/takedown { reasonCode, listerNote?, note }` — moderator+.
-- `POST /admin/neighbourhoods` — see G7.
+- `POST /admin/neighbourhoods`, `PATCH /admin/neighbourhoods/:id`, deactivate, reactivate — see
+  G7, G8.
 
 ### Rules
 - **R1 Flags on the review page** (they never block anything by themselves):
@@ -436,7 +455,7 @@ SEARCH_MAX_RADIUS_KM=20            # G5
 Unit or e2e tests must cover: L1–L13 and every row of the transitions table (and that any other
 transition is refused), P1–P5 (including: a JPEG with EXIF GPS comes back without any metadata;
 a resized and recompressed copy of another lister's photo is a match, the same lister's is not),
-G1–G7 (results and distances come from `approx_location`; the exact point and the landmark
+G1–G8 (results and distances come from `approx_location`; the exact point and the landmark
 appear only for the lister and staff), F1–F6 (with the clock moved, and the job run twice),
 N1–N5, R1–R6, the ban and unban effects (L8), and the audit rows. Use a fake `PushSender` and
 MinIO or a fake `PhotoStorage`; tests never call FCM.
@@ -476,6 +495,9 @@ MinIO or a fake `PhotoStorage`; tests never call FCM.
   with the reason code (neutral `GUIDELINES` for suspected fraud); "my neighbourhood isn't
   listed" lets the lister pick the nearest one and type the real name, which the reviewer sees
   and can add. → L5, G1, G7, N5, R1
+- **Neighbourhood management (2026-11-09):** the reviewed list is seeded as it is; staff add,
+  rename (English and Amharic) and deactivate neighbourhoods (hidden from the picker, existing
+  listings keep them); never hard-deleted; all audited. → G7, G8
 - **T-1** S3-compatible storage, MinIO for development, Cloudflare R2 in the production
   comparison. **T-2** The review page is one static page. **T-3** "Rented" without picking the
   tenant until Phase 3. **T-4** You create the Firebase project; Claude gives you the exact setup
