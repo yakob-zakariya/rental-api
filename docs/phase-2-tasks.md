@@ -18,7 +18,7 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
 - [ ] **T1.1 Sub-cities and neighbourhoods.** Entities, migration, seed from the reviewed list;
       `GET /areas` (G7); tests.
 - [ ] **T1.2 Staff add a neighbourhood.** `POST /admin/neighbourhoods`, new audit types, 409
-      `NEIGHBOURHOOD_EXISTS` (G7, S1); tests.
+      `NEIGHBOURHOOD_EXISTS`, moving a property with `propertyId` (G7, S1); tests.
 - [ ] **T1.3 Service area.** Get the Addis Ababa boundary from OpenStreetMap, check the licence and
       the attribution it needs, load it in a migration (`service_area`); an `isInsideServiceArea`
       check (G1); tests with points inside, outside and near the edge.
@@ -29,7 +29,7 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
       Postgres enums, the L10 partial unique index, the GiST index on `approx_location`.
 - [ ] **T2.2 Drafts.** `POST /listings`, `PATCH` (draft only for now), `DELETE` a draft,
       `GET /me/listings`; field validation (section 2, L13), ownership (L3), the service-area check
-      and `approx_location` (G1, G2); tests.
+      and `approx_location`, "my neighbourhood isn't listed" (G1, G2); tests.
 - [ ] **T2.3 Submit and withdraw.** L2 (verified, complete, 3+ photos — tested with a fake photo
       count until Step 3 — and the cap), L4, `listing_history` rows; tests.
 - [ ] **T2.4 Editing after submission.** L5 and L6 (which fields send a listing back to review,
@@ -53,12 +53,12 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
 
 ## Step 4 — Staff review
 
-- [ ] **T4.1 Queue and detail.** `GET /admin/listings`, `GET /admin/listings/:id` with the three
+- [ ] **T4.1 Queue and detail.** `GET /admin/listings`, `GET /admin/listings/:id` with the four
       flags (R1), the exact point, landmark and history; tests.
 - [ ] **T4.2 Approve, reject, take down.** R2–R6, reason codes, `version` check, `listerNote`
       added to the audit allow-list (S1); tests.
-- [ ] **T4.3 Review web page.** The static page at `/admin/review`; checked by hand with real
-      photos.
+- [ ] **T4.3 Review web page.** The static page at `/admin/review`, including "add
+      neighbourhood" for an unlisted one; checked by hand with real photos.
 
 ## Step 5 — Browse and search
 
@@ -79,7 +79,8 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
       deleting invalid tokens (N2); checked on a real phone.
 - [ ] **T6.3 Freshness job.** F1–F6: checks, the answer endpoint with closing reasons, stale,
       restore, expiry; tests with the clock moved and the job run twice.
-- [ ] **T6.4 Review notices.** Push on approve and reject (N5); tests.
+- [ ] **T6.4 Review notices.** Push on approve, reject and takedown, with the reason code (N5);
+      tests.
 
 ## Step 7 — Bans
 

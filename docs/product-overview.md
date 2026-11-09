@@ -120,7 +120,8 @@ Detailed in `phase-2-spec.md` (decided 2026-11-09).
 - **Residential only at launch.** Types: condominium, apartment, villa/house, room in a compound,
   studio. Property fields: bedrooms, bathrooms, furnished, separate water meter, separate
   electricity meter, description; size and floor optional; amenities from a small fixed list
-  (parking, gated compound, guard). No utilities field: the meter fields cover it.
+  (parking, gated compound, guard). No utilities field: the meter fields cover it. Bathrooms = 0
+  means a shared bathroom.
 - **Listing fields:** `monthly_rent_birr` (whole birr), `advance_months` (1–12), negotiable,
   available-from date.
 - **Photos:** at least 3 to submit, at most 12.
@@ -133,10 +134,12 @@ Detailed in `phase-2-spec.md` (decided 2026-11-09).
     suspected fraud, so the lister gets a neutral reason. Staff can add a short note the lister
     sees.
   - Staff can take a live listing down, with a reason code, logged in `admin_actions`.
-  - The lister gets a push when a listing is approved or rejected.
-- **Editing:** changing photos, location, landmark or description sends a live or stale listing
-  back to review. Price and available-from changes don't, but are recorded in the listing's
-  history. A rejected listing can be edited and resubmitted.
+  - The lister gets a push when a listing is approved, rejected or taken down, with the reason
+    code (the neutral one for suspected fraud).
+- **Editing:** changing rent, available-from or negotiable applies at once (rent and
+  available-from are recorded in the listing's history). Any other change sends a live or stale
+  listing back to review, and it is hidden until approved. A rejected listing can be edited and
+  resubmitted.
 - **Freshness rule:** every 7 days, ask the lister "still available?" by push notification. No
   answer in 48 hours → `stale` (hidden; one tap restores it). Stale for 30 days → `expired`: the
   lister reopens it by confirming its details, and it goes to review only if something changed.
@@ -162,9 +165,10 @@ Detailed in `phase-2-spec.md` (decided 2026-11-09).
   with `url_launcher`. No API key needed.
 - In-app map: `flutter_map` + an OpenStreetMap-based tile provider (avoid Google billing early).
 - Areas: the 11 sub-cities and their neighbourhoods, in English and Amharic, for filters; PostGIS
-  for "near me". The lister picks the sub-city and the neighbourhood (required). The starting
-  neighbourhood list is `addis-ababa-neighbourhoods.md` (for review); staff add neighbourhoods
-  later.
+  for "near me". The lister picks the sub-city and the neighbourhood (required). If theirs isn't
+  listed, they pick the nearest one and type the real name; the reviewer sees it and can add the
+  neighbourhood. The starting neighbourhood list is `addis-ababa-neighbourhoods.md` (for
+  review); staff add neighbourhoods later.
 
 ## 8. Contact requests, viewings and feedback (to design)
 

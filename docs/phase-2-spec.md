@@ -1,8 +1,8 @@
 # Phase 2 spec — Listings
 
 **Status:** final, 2026-11-09. Open questions P2-1–P2-15 and T-1–T-4 are answered (section 12).
-Items marked **(default — confirm)** are small gaps the answers didn't cover; they are built as
-written unless you say otherwise.
+The four follow-up defaults and the missing-neighbourhood case were settled the same day (section
+12, "Follow-ups").
 
 **Goal:** a verified landlord in Addis Ababa creates a listing with photos and a location; staff
 review it on a small web page; once approved, anyone can find it by area, price or "near me",
@@ -68,10 +68,11 @@ One row: the Addis Ababa city boundary as `geography(MultiPolygon, 4326)`, loade
 | --- | --- | --- |
 | id | uuid PK | |
 | lister_id | uuid FK → users | |
-| neighbourhood_id | uuid FK → neighbourhoods | required (the sub-city follows from it) |
+| neighbourhood_id | uuid FK → neighbourhoods | required (the sub-city follows from it); the nearest one if the real one isn't listed (G1) |
+| unlisted_neighbourhood_name | varchar(100) null | the real name, typed by the lister when it isn't in our list (G1); never public |
 | type | enum `condominium`, `apartment`, `villa_house`, `compound_room`, `studio` | residential only |
 | bedrooms | int | ≥ 0 |
-| bathrooms | int | ≥ 0 (default — confirm: 0 means no private bathroom) |
+| bathrooms | int | ≥ 0; 0 = shared bathroom (the app shows "Shared bathroom") |
 | furnished | boolean | |
 | separate_water_meter | boolean | |
 | separate_electricity_meter | boolean | |
@@ -225,12 +226,12 @@ Any other transition: 409 `INVALID_LISTING_STATE`. **Active** means `pending_rev
   - `draft`, `rejected`: any field, freely.
   - `pending_review`: any field; it stays in the queue. A reviewer's decision on an older version
     is refused (R2).
-  - `live`, `stale`: changing the **photos, location, landmark or description** sends the listing
-    back to `pending_review`, hidden from browse until approved (default — confirm: hidden while
-    in review). Changing **monthly rent** or **available-from** applies at once and is written to
-    `listing_history`. Every other field (type, neighbourhood, bedrooms, bathrooms, furnished,
-    meters, size, floor, amenities, advance months, negotiable, relation) also sends it back to
-    review (default — confirm).
+  - `live`, `stale`: changing **monthly rent**, **available-from** or **negotiable** applies at
+    once; rent and available-from changes are written to `listing_history`. Changing **any other
+    field** (photos, location, landmark, description, type, neighbourhood or unlisted
+    neighbourhood name, bedrooms, bathrooms, furnished, meters, size, floor, amenities, advance
+    months, relation) sends the listing back to `pending_review`, **hidden from browse until
+    approved**.
   - `rented`, `removed`: no edits; relist instead (L11).
   - `expired`: see L6.
 - **L6** An `expired` listing is reopened by the lister confirming its details. Edits to an
@@ -285,6 +286,9 @@ Any other transition: 409 `INVALID_LISTING_STATE`. **Active** means `pending_rev
   OpenStreetMap; its licence (ODbL) needs attribution, which the app shows anyway for the
   OpenStreetMap-based map tiles. There's no check that the pin is inside the chosen sub-city
   (we have no sub-city boundaries); the reviewer sees both on a map.
+  - **"My neighbourhood isn't listed":** the lister picks the nearest neighbourhood and types the
+    real name (`unlisted_neighbourhood_name`, 1–100 characters). The reviewer sees it (R1) and can
+    add the neighbourhood (G7).
 - **G2** `approx_location` is the exact point moved by a random distance of 200–400 m in a random
   direction, generated **once** and stored (overview §7). It is regenerated only when the lister
   changes the exact location, never on read, so repeated requests can't be averaged back to the
@@ -301,11 +305,15 @@ Any other transition: 409 `INVALID_LISTING_STATE`. **Active** means `pending_rev
   with near me). Cursor pagination with a composite cursor, as the admin queues.
 - **G6** `GET /listings/:id` (public): a listing that isn't `live` (or whose lister isn't
   `active`) is 404 for everyone except its lister. Shown: listing and property fields except the
-  landmark, photos, sub-city and neighbourhood, the approximate point, the lister's name with the
-  verified badge (L7) and `lister_relation`.
+  landmark and the unlisted neighbourhood name, photos, sub-city and neighbourhood (the picked
+  one), the approximate point, the lister's name with the verified badge (L7) and
+  `lister_relation`.
 - **G7** `GET /areas` (public): sub-cities with their neighbourhoods, both languages.
-  `POST /admin/neighbourhoods { subCityId, nameEn, nameAm }` (moderator+, audited) adds one; a
-  name already in that sub-city is 409 `NEIGHBOURHOOD_EXISTS`.
+  `POST /admin/neighbourhoods { subCityId, nameEn, nameAm, propertyId? }` (moderator+, audited)
+  adds one; a name already in that sub-city is 409 `NEIGHBOURHOOD_EXISTS`. With `propertyId`
+  (adding it from the review page), that property is moved to the new neighbourhood and its
+  `unlisted_neighbourhood_name` cleared, in the same transaction; this doesn't count as a lister
+  edit (L5).
 
 ## 6. Freshness checks
 
@@ -340,7 +348,8 @@ Any other transition: 409 `INVALID_LISTING_STATE`. **Active** means `pending_rev
 - **N4** A push never contains a phone number, a name or a location; it names the listing by
   neighbourhood and type and opens it in the app.
 - **N5** Phase 2 sends: the weekly check, listing approved, listing rejected (decided). A staff
-  takedown sends no push (default — confirm); the lister sees it in `GET /me/listings`.
+  takedown also sends a push with the reason code (decided 2026-11-09); suspected fraud uses the
+  neutral `GUIDELINES`, as for rejections (R4, R5).
 
 ## 8. Staff review
 
@@ -360,7 +369,10 @@ Any other transition: 409 `INVALID_LISTING_STATE`. **Active** means `pending_rev
   - `PHOTO_MATCH` — a photo matches another lister's photo (P3), with a link to that listing;
   - `MANY_ACTIVE_LISTINGS` — the lister has more than 2 active listings, in any area, counting
     this one (decided 2026-11-09);
-  - `PHONE_IN_TEXT` — the description or landmark contains something that looks like a phone
+  - `UNLISTED_NEIGHBOURHOOD` — the lister typed a neighbourhood that isn't in our list (G1), with
+    the typed name and an "add neighbourhood" action (G7);
+  - `PHONE_IN_TEXT` — the description, landmark or unlisted neighbourhood name contains
+    something that looks like a phone
     number (the phone is meant to be revealed only on acceptance).
 - **R2** S1–S3 apply: every change is audited in the same transaction, `support` is read-only,
   admin and app tokens don't cross. Only `pending_review` listings can be approved or rejected:
@@ -381,7 +393,7 @@ Any other transition: 409 `INVALID_LISTING_STATE`. **Active** means `pending_rev
 ### Review web page
 One static HTML page served by the API at `/admin/review`, using the existing admin login and the
 admin endpoints above: the queue, one listing with its photos, flags and both points on a map, and
-the approve / reject / takedown buttons. No framework, no build step; the Next.js admin stays for
+the approve / reject / takedown buttons, and "add neighbourhood" for an unlisted one. No framework, no build step; the Next.js admin stays for
 later.
 
 ## 9. Environment variables (new)
@@ -408,7 +420,9 @@ SEARCH_MAX_RADIUS_KM=20            # G5
 ## 10. Flutter app (`rental-app`)
 
 - Create a listing: the form (section 2 fields), photos (camera or gallery, 3–12), the location
-  (GPS or a draggable pin on `flutter_map`), the sub-city and neighbourhood pickers, submit.
+  (GPS or a draggable pin on `flutter_map`), the sub-city and neighbourhood pickers with "my
+  neighbourhood isn't listed" (pick the nearest, type the real name), submit. Bathrooms = 0 is
+  shown as "Shared bathroom".
 - My listings: status, the staff reason and note, a pending weekly check with the "still
   available?" answers and the three closing reasons, restore, reopen, close, relist.
 - Browse without an account: list and map, filters, near me, listing detail with the
@@ -456,6 +470,12 @@ MinIO or a fake `PhotoStorage`; tests never call FCM.
   Addis Ababa; 11 sub-cities plus a starting neighbourhood list you review; staff add
   neighbourhoods. → G1, G7
 - **P2-15** Claude drafts the Amharic, you review; `om` users get English. → N3
+- **Follow-ups (same day):** a live or stale listing is hidden while back in review; every field
+  except rent, available-from and negotiable sends it back to review (rent and available-from
+  are recorded in the history); bathrooms = 0 means a shared bathroom; a takedown sends a push
+  with the reason code (neutral `GUIDELINES` for suspected fraud); "my neighbourhood isn't
+  listed" lets the lister pick the nearest one and type the real name, which the reviewer sees
+  and can add. → L5, G1, G7, N5, R1
 - **T-1** S3-compatible storage, MinIO for development, Cloudflare R2 in the production
   comparison. **T-2** The review page is one static page. **T-3** "Rented" without picking the
   tenant until Phase 3. **T-4** You create the Firebase project; Claude gives you the exact setup
