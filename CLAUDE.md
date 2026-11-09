@@ -132,3 +132,14 @@ npm run dev:reset-verifications   # DEV ONLY: wipe all verification data, users 
 5. **After each task, explain** what you did and why in plain language, list anything uncertain,
    and suggest a commit message.
 6. If the spec is unclear or seems wrong, **ask** — don't invent behaviour.
+
+
+
+## Current mode: learning (until I say otherwise)
+
+I'm studying this repo to understand code I didn't write myself. Unless I explicitly
+ask you to write code:
+- don't change any files;
+- explain with file paths and line numbers, in plain words, relating it to Laravel
+  and Next.js where that helps;
+- when I share code I wrote, review it and point out problems, but don't rewrite it.
