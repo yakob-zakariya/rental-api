@@ -1,8 +1,8 @@
 # Product overview — broker-free rental platform (Ethiopia)
 
 This document records every product and technical decision made so far. Sections marked
-**(to design)** are agreed in direction but not yet detailed. Phase 1 only builds a small part
-of this — see `phase-1-spec.md`.
+**(to design)** are agreed in direction but not yet detailed. The order of work and the launch
+scope are in `roadmap.md`; each phase is detailed in its own spec (`phase-N-spec.md`).
 
 ---
 
@@ -45,9 +45,10 @@ Differentiators:
 | --- | --- |
 | Browse listings | Anyone, no account |
 | Draft a listing | Logged in |
-| Publish a listing | Verified + active + under active-listing limit |
+| Publish a listing | Verified + active + under active-listing limit; goes live only after staff review |
 | Edit/remove a listing | Verified + is the lister |
 | Request a contact | Verified + active + has quota |
+| Report a listing | A tenant (who exactly counts as one: to design) |
 | Give viewing feedback | Is the tenant on that contact request |
 | Confirm a rental | Is the landlord or tenant on that listing |
 
@@ -73,12 +74,17 @@ Three separate layers:
 
 ### Anti-fraud layers for listings (to design in detail)
 
-- Camera-only photos in the app (no gallery uploads); record capture time and GPS.
-- Perceptual hash (`phash`) on every photo to catch reused images; later, seed hashes from
-  public Telegram rental channels.
-- Behaviour rule: one person with more than 2 active listings in different areas → review.
-- Probation for new listers: first listing labelled "New lister" with limited contact requests
-  until a positive feedback arrives.
+At launch (decided 2026-11-09): photo hashing and the 2-active-listings rule. Camera-only photos
+are not at launch, and probation is covered by staff reviewing every listing.
+
+- **Not at launch:** camera-only photos in the app (no gallery uploads); record capture time and GPS.
+- **At launch:** perceptual hash (`phash`) on every photo to catch reused images; later, seed
+  hashes from public Telegram rental channels.
+- **At launch:** behaviour rule: one person with more than 2 active listings in different areas →
+  review. (Whether at launch this is a review flag or a hard limit of 2: to confirm in the
+  Phase 2 spec.)
+- **Not at launch (covered by staff reviewing every listing):** probation for new listers: first
+  listing labelled "New lister" with limited contact requests until a positive feedback arrives.
 
 ## 5. Identity verification (Phase 1 — see spec)
 
@@ -95,6 +101,9 @@ Three separate layers:
   here?" (age 18+, duplicate ID, banned ID).
 - Verified name and date of birth are locked after approval.
 - Lost SIM / new phone: re-verify; matching ID hash moves the account to the new number.
+  Decided 2026-11-09: this logs out every session on the old number and frees the old number.
+  Needed at launch; not built in Phase 1 (today the second sign-up ends up `blocked` as a
+  duplicate ID).
 - We never build our own liveness or document-fraud detection.
 
 ## 6. Listings (to design)
@@ -103,8 +112,12 @@ Three separate layers:
   availability. Relisting creates a new listing on the same property, keeping history.
 - **Listing states:** `draft → pending_review → live → stale → expired`, plus `rented`,
   `removed`, `rejected`. Every transition is timestamped.
+- **Staff review (decided 2026-11-09):** at launch, every listing goes through staff review
+  (`pending_review`) before it goes live.
 - **Freshness rule:** every 7 days, ask the lister "still available?". No answer in 48 hours →
   `stale` (hidden; one tap restores it). Stale for 30 days → `expired` (must re-check details).
+  The question is sent by push notification (see §12).
+- **Launch city (decided 2026-11-09):** Addis Ababa only.
 - **Rented:** lister taps "Rented" and picks the tenant; the tenant confirms → a `rentals` row.
 - Price: `monthly_rent_birr` (integer) and `advance_months` (integer) are separate fields.
 - Banning a user must hide all their listings.
@@ -115,8 +128,9 @@ Three separate layers:
   plain-language **landmark** field.
 - Two points stored on the property: `location` (exact) and `approx_location` (randomly shifted
   200–400 m, generated **once** and stored).
-- The API returns the exact point only to a tenant with a **confirmed viewing**; everyone else
-  sees the approximate area.
+- The API returns the exact point only to a tenant whose **contact request the landlord has
+  accepted** (decided 2026-11-09; previously "confirmed viewing"); everyone else sees the
+  approximate area.
 - Directions: open Google Maps via URL (`https://www.google.com/maps/dir/?api=1&destination=LAT,LNG`)
   with `url_launcher`. No API key needed.
 - In-app map: `flutter_map` + an OpenStreetMap-based tile provider (avoid Google billing early).
@@ -125,10 +139,16 @@ Three separate layers:
 ## 8. Contact requests, viewings and feedback (to design)
 
 - A verified tenant requests contact; the landlord sees the tenant's verified name.
-- **Phase 1 of this feature:** viewing scheduling + preset messages ("Is it still available?",
-  "Is water included?", "Running late"). Phone number revealed once a viewing is confirmed.
+- **At launch (decided 2026-11-09):**
+  - the landlord accepts the contact request; acceptance reveals the landlord's phone number and
+    the exact location to the tenant, and a chat starts from the accepted request;
+  - requests are limited by a **contact quota**; the number is a config value.
+- **After launch:** viewing scheduling + preset messages ("Is it still available?",
+  "Is water included?", "Running late").
 - **Viewing feedback:** 24–48 h after a viewing, three one-tap questions: Did you view it? Who
   did you meet (owner / representative / broker / unsure)? Was it as described? Repeat once at day 5.
+  Prompts are sent by push notification. Without viewing scheduling at launch, what starts the
+  24–48 h clock is still to decide.
 - **Getting feedback answered:** before revealing the next contact, ask about the last viewing;
   answering can earn back a free contact. A landlord marking "Rented" triggers a confirmation
   request to the tenant.
@@ -136,23 +156,32 @@ Three separate layers:
 
 ## 9. Reports, moderation and strikes (to design)
 
+- **At launch, kept simple (decided 2026-11-09):** a tenant reports a listing, staff decide, and
+  staff can use the existing ban (Phase 1, S5). **Automatic strikes come later.**
 - Reports have a reason (fake listing, broker, wrong price, already rented, scam, other).
 - The landlord can respond; a moderator decides (`upheld` / `dismissed`).
-- Only an upheld report creates a strike. **Three strikes → ban** on the verified identity.
+- Later: only an upheld report creates a strike. **Three strikes → ban** on the verified identity.
 
 ## 10. Future features (roadmap)
 
+Order of work and the full launch scope: `roadmap.md`.
+
 | Feature | When |
 | --- | --- |
-| Viewing feedback (private) | MVP |
-| Viewing scheduling + preset messages | Phase after MVP |
-| Full in-app chat (WebSocket gateway, Redis, FCM) | Later |
+| Viewing feedback (private) | Launch |
+| Full in-app chat (WebSocket gateway, Redis, FCM), starting from an accepted contact request | Launch (decided 2026-11-09) |
+| Push notifications (FCM): freshness checks, feedback prompts, chat messages | Launch (decided 2026-11-09) |
+| Reports, decided by staff (no automatic strikes) | Launch (decided 2026-11-09) |
+| Viewing scheduling + preset messages | After launch (decided 2026-11-09) |
+| Automatic strikes (three upheld reports → ban) | Later |
 | Public reviews, only from confirmed rentals, double-blind | Much later, if ever |
-| Contract + woreda registration kit | After MVP |
+| Contract + woreda registration kit | After launch |
 | Landlord tools (rent tracking, receipts) | Later |
 
 ## 11. Monetization (later)
 
+- The contact quota exists at launch, free, with the number as a config value (decided
+  2026-11-09); paid passes come later.
 - Free until trusted. Then: **Tenant Search Pass** (~Br 199–399 / 30 days; free tier of 3
   contacts/month), contract kit (~Br 150–300), featured listing for verified owners only
   (~Br 100–200/week).
@@ -165,12 +194,15 @@ Three separate layers:
 ## 12. Technical stack
 
 - **API:** NestJS + TypeORM + PostgreSQL/PostGIS + Redis
-- **Mobile:** one Flutter app for both landlords and tenants (separate repo)
-- **Admin:** Swagger UI in Phase 1; a proper web admin (Next.js) later
+- **Mobile:** one Flutter app for both landlords and tenants (separate repo). Languages at
+  launch: English and Amharic (decided 2026-11-09).
+- **Admin:** Swagger UI, plus a very small web page for reviewing listings (with photos) before
+  launch (decided 2026-11-09); a proper web admin (Next.js) later
 - **Public listing pages:** server-rendered web pages for sharing links and Google indexing (later)
 - **Telegram:** a channel that auto-posts new verified listings, for marketing only (later)
-- **Push:** Firebase Cloud Messaging (later)
-- **SMS OTP:** local SMS gateway behind an interface; logged to console in development
+- **Push:** Firebase Cloud Messaging, at launch (decided 2026-11-09): freshness checks, feedback
+  prompts and chat messages
+- **SMS:** for OTP only. Local SMS gateway behind an interface; logged to console in development
 - **Development webhooks:** ngrok (fixed URL) or Cloudflare quick tunnel; plus a background job
   that polls Didit for stuck sessions, so webhooks are not a single point of failure
 
@@ -186,12 +218,12 @@ Phase 1 tables are detailed in `phase-1-spec.md`. Later tables:
   last_confirmed_at, expires_at, rented_at
 - `availability_checks` — listing_id, sent_at, responded_at, response
 - `contact_requests` — listing_id, tenant_id, created_at, requires_feedback
-- `viewings` — contact_request_id, proposed/confirmed times, status
+- `viewings` — contact_request_id, proposed/confirmed times, status (after launch, with scheduling)
 - `viewing_feedback` — contact_request_id, viewed, met_person, as_described
 - `rentals` — listing_id, tenant_id, landlord_confirmed_at, tenant_confirmed_at
 - `reports` — reporter_id, listing_id, reported_user_id, reason, details, status,
   landlord_response, decision, handled_by, handled_at
-- `strikes` — user_id, report_id, issued_by, created_at
+- `strikes` — user_id, report_id, issued_by, created_at (later, with automatic strikes)
 - `saved_searches`, `favorites`, `devices` (push tokens), `amenities` + pivot
 - Later: `subscriptions`, `payments`
 
