@@ -54,6 +54,7 @@ Notes:
 | # | Request | Expect |
 | --- | --- | --- |
 | 1 | `GET /health` | 200, `database` and `redis` both `up` |
+| 1a | `GET /areas` (no token) | 200, 11 sub-cities (Addis Ketema … Yeka), each with neighbourhoods in English and Amharic; 70 neighbourhoods in all |
 | 2 | `POST /auth/otp/request` `{ "phone": "0911234567" }` | 200 `{ "expiresInSeconds": 300 }`; terminal shows `[SMS] To +251911234567: Your rental code is …` |
 | 3 | `POST /auth/otp/verify` `{ "phone": "0911234567", "code": "<code>", "deviceName": "laptop" }` | 200 `{ accessToken, refreshToken, accessTokenExpiresIn: 900 }` — copy both tokens |
 | 4 | **Authorize** (top of Swagger) → paste the access token into **app** (not admin) | |

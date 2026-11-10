@@ -45,4 +45,32 @@ describe('resetDatabase (e2e helper)', () => {
     expect(sridsBefore).toBeGreaterThan(0);
     expect(await count('spatial_ref_sys')).toBe(sridsBefore);
   });
+
+  it('puts back the rows migrations seeded, undoing changes made to them', async () => {
+    const seeded = async () =>
+      dataSource.query(
+        `SELECT n.id, n.name_en, n.name_am, n.deactivated_at, n.sub_city_id
+         FROM neighbourhoods n ORDER BY n.id`,
+      );
+    const before = await seeded();
+    const subCitiesBefore = await count('sub_cities');
+
+    await dataSource.query(
+      `UPDATE neighbourhoods SET name_en = 'Renamed', deactivated_at = now()
+       WHERE id = $1`,
+      [before[0].id],
+    );
+    await dataSource.query(
+      `INSERT INTO neighbourhoods (sub_city_id, name_en, name_am)
+       VALUES ($1, 'Added in a test', 'ሙከራ')`,
+      [before[0].sub_city_id],
+    );
+
+    await resetDatabase(app);
+
+    expect(before).toHaveLength(70);
+    expect(subCitiesBefore).toBe(11);
+    expect(await seeded()).toEqual(before);
+    expect(await count('sub_cities')).toBe(subCitiesBefore);
+  });
 });
