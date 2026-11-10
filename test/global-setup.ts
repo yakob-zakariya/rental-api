@@ -6,6 +6,7 @@ import pg from 'pg';
 import { DataSource, type MigrationInterface } from 'typeorm';
 import { buildDataSourceOptions } from '../src/database/data-source.options.js';
 import { TEST_ENV } from './test-env.js';
+import { SEED_SCHEMA, SEEDED_TABLES } from './utils/seeded-tables.js';
 
 // Loaded through Vite as classes. TypeORM's own glob loading uses native import(), which can't
 // load the .ts sources.
@@ -22,6 +23,7 @@ const migrations = Object.values(migrationModules)
 export default async function setup() {
   await recreateDatabase(TEST_ENV.DATABASE_URL);
   await runMigrations(TEST_ENV.DATABASE_URL);
+  await snapshotSeededTables(TEST_ENV.DATABASE_URL);
   await flushRedis(TEST_ENV.REDIS_URL);
 }
 
@@ -64,6 +66,22 @@ async function runMigrations(databaseUrl: string) {
     await dataSource.runMigrations({ transaction: 'each' });
   } finally {
     await dataSource.destroy();
+  }
+}
+
+// Keeps a copy of the rows migrations seeded, for resetDatabase() to restore (see seeded-tables.ts).
+async function snapshotSeededTables(databaseUrl: string) {
+  const client = new pg.Client({ connectionString: databaseUrl });
+  await client.connect();
+  try {
+    await client.query(`CREATE SCHEMA "${SEED_SCHEMA}"`);
+    for (const table of SEEDED_TABLES) {
+      await client.query(
+        `CREATE TABLE "${SEED_SCHEMA}"."${table}" AS TABLE "public"."${table}"`,
+      );
+    }
+  } finally {
+    await client.end();
   }
 }
 

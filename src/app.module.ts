@@ -12,6 +12,7 @@ import {
 } from './config/env.validation.js';
 import { DatabaseModule } from './database/database.module.js';
 import { AdminModule } from './modules/admin/admin.module.js';
+import { AreasModule } from './modules/areas/areas.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { ActiveAccountGuard } from './modules/auth/guards/active-account.guard.js';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard.js';
@@ -59,6 +60,7 @@ import { RedisModule } from './redis/redis.module.js';
     VerificationModule,
     AdminModule,
     ModerationModule,
+    AreasModule,
   ],
   providers: [
     { provide: APP_PIPE, useFactory: createValidationPipe },

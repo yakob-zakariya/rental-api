@@ -197,6 +197,33 @@ No body. → `200` with the new status (`manual_review`). Only works when `canRe
 was true. Errors: `MANUAL_REVIEW_NOT_AVAILABLE`, `VERIFICATION_IN_REVIEW`, `ALREADY_VERIFIED`,
 `VERIFICATION_UNAVAILABLE`.
 
+## Areas (sub-cities and neighbourhoods)
+
+### `GET /areas`
+
+No token. → `200` with Addis Ababa's 11 sub-cities, each with its **active** neighbourhoods, in
+English and Amharic, both sorted by English name:
+
+```json
+[
+  {
+    "id": "…", "nameEn": "Arada", "nameAm": "አራዳ",
+    "neighbourhoods": [
+      { "id": "…", "nameEn": "Arat Kilo", "nameAm": "አራት ኪሎ" },
+      { "id": "…", "nameEn": "Piassa", "nameAm": "ፒያሳ" }
+    ]
+  }
+]
+```
+
+- Use it for the sub-city → neighbourhood picker and the browse filters. Show `nameAm` when the
+  app is in Amharic, `nameEn` otherwise (also for Afaan Oromo, until it's added), and re-sort
+  for Amharic if you want Amharic alphabetical order.
+- A sub-city can come back with an empty `neighbourhoods` list.
+- Staff can add, rename and deactivate neighbourhoods at any time, so fetch the list fresh (for
+  example once per app start) rather than shipping a copy in the app. A deactivated one
+  disappears from this list, but a listing that already uses it keeps it.
+
 ## Health
 
 `GET /health` (no token) → `200` when the API, database and Redis are up; `503` otherwise.

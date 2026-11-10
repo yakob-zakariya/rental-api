@@ -1,7 +1,7 @@
 {
   "info": {
     "_postman_id": "6f1c2b8e-4d2a-4c1e-9b7a-1a2b3c4d5e6f",
-    "name": "rental-api (Phase 1)",
+    "name": "rental-api",
     "description": "Manual testing of rental-api, in user-journey order. Select the \"rental-api local\" environment first. See docs/manual-testing.md for the full walkthrough.\n\nAuth: every protected request sends the collection's Bearer {{accessToken}}; \"OTP verify\" and \"Refresh\" save the tokens into the environment automatically. Public requests (health, auth) are set to No Auth.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -1112,6 +1112,44 @@
                 "exec": [
                   "pm.test('status 401', () => pm.response.to.have.status(401));",
                   "pm.test('code UNAUTHENTICATED', () => pm.expect(pm.response.json().code).to.eql('UNAUTHENTICATED'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7. Areas",
+      "item": [
+        {
+          "name": "Areas (sub-cities and neighbourhoods)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/areas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "areas"
+              ]
+            },
+            "description": "No token. 200: the 11 Addis Ababa sub-cities, each with its active neighbourhoods, in English and Amharic, sorted by English name (spec G7).",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('11 sub-cities', () => pm.expect(pm.response.json()).to.have.lengthOf(11));"
                 ]
               }
             }

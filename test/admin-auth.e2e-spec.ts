@@ -471,6 +471,7 @@ describe('staff auth (e2e)', () => {
       'FK_banned_identities_banned_by_admin_id',
       'FK_banned_identities_lifted_by_admin_id',
       'FK_identity_verifications_decided_by_admin_id',
+      'FK_neighbourhoods_created_by_admin_id',
     ]);
   });
 });

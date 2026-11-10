@@ -16,7 +16,7 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
 
 ## Step 1 — Areas
 
-- [ ] **T1.1 Sub-cities and neighbourhoods.** Entities, migration, seed from the reviewed list;
+- [x] **T1.1 Sub-cities and neighbourhoods.** Entities, migration, seed from the reviewed list;
       `GET /areas` (G7); tests.
 - [ ] **T1.2 Staff manage neighbourhoods.** Add (with `propertyId` moving a property), list,
       rename, deactivate, reactivate; never delete; new audit types and detail keys (G7, G8, S1);
