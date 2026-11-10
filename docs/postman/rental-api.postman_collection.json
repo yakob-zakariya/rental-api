@@ -1076,6 +1076,231 @@
           "response": []
         },
         {
+          "name": "Neighbourhoods (staff list)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/neighbourhoods?includeInactive=false",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "neighbourhoods"
+              ],
+              "query": [
+                {
+                  "key": "includeInactive",
+                  "value": "false"
+                }
+              ]
+            },
+            "description": "Any staff role. Sorted by sub-city, then name. `subCityId=` filters; `includeInactive=true` adds deactivated ones. Saves the first one as {{neighbourhoodId}} and its sub-city as {{subCityId}}.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const first = pm.response.json()[0];",
+                  "if (first) { pm.environment.set('neighbourhoodId', first.id); pm.environment.set('subCityId', first.subCityId); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add neighbourhood",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/neighbourhoods",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "neighbourhoods"
+              ]
+            },
+            "description": "Moderator+. 201. 404 `SUB_CITY_NOT_FOUND`; 409 `NEIGHBOURHOOD_EXISTS` (same English name in the sub-city, ignoring case, deactivated ones included). Audited as `neighbourhood.create`.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subCityId\": \"{{subCityId}}\",\n  \"nameEn\": \"Test neighbourhood\",\n  \"nameAm\": \"የሙከራ ሰፈር\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Rename neighbourhood",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/neighbourhoods/{{neighbourhoodId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "neighbourhoods",
+                "{{neighbourhoodId}}"
+              ]
+            },
+            "description": "Moderator+. One or both names. 400 `NO_FIELDS_TO_UPDATE`; 404 `NEIGHBOURHOOD_NOT_FOUND`; 409 `NEIGHBOURHOOD_EXISTS`. Audited with the old and new names.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nameAm\": \"አዲስ ስም\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Deactivate neighbourhood",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/neighbourhoods/{{neighbourhoodId}}/deactivate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "neighbourhoods",
+                "{{neighbourhoodId}}",
+                "deactivate"
+              ]
+            },
+            "description": "Moderator+. Hidden from GET /areas; existing listings keep it. 409 `NEIGHBOURHOOD_ALREADY_INACTIVE`. `note` optional.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Duplicate of another name\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Reactivate neighbourhood",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/neighbourhoods/{{neighbourhoodId}}/reactivate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "neighbourhoods",
+                "{{neighbourhoodId}}",
+                "reactivate"
+              ]
+            },
+            "description": "Moderator+. Back in GET /areas. 409 `NEIGHBOURHOOD_ALREADY_ACTIVE`. `note` optional.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Deactivated by mistake\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
           "name": "App token on an admin route (expected failure)",
           "request": {
             "method": "GET",

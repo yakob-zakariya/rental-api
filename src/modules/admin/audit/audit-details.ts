@@ -12,6 +12,11 @@ export interface AuditDetails {
   enteredFields?: string[];
   previousOutcome?: string;
   newOutcome?: string;
+  /** Neighbourhood names: the new ones on create, old and new on a rename (spec G8). */
+  oldNameEn?: string;
+  newNameEn?: string;
+  oldNameAm?: string;
+  newNameAm?: string;
 }
 
 const TEXT_KEYS = [
@@ -20,6 +25,10 @@ const TEXT_KEYS = [
   'reasonCode',
   'previousOutcome',
   'newOutcome',
+  'oldNameEn',
+  'newNameEn',
+  'oldNameAm',
+  'newNameAm',
 ] as const;
 const ALLOWED_KEYS = new Set<string>([...TEXT_KEYS, 'enteredFields']);
 export const MAX_DETAIL_LENGTH = 1000;

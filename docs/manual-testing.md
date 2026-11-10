@@ -152,6 +152,25 @@ Runs every 5 minutes when `JOBS_ENABLED=true` (the default in `.env`).
 | `POST /admin/users/<userId>/unban { "note": "…" }` as moderator | 403 `INSUFFICIENT_ROLE` |
 | … as super_admin | 200, `status: active`; the user signs in again (old tokens stay revoked) |
 
+### Neighbourhoods (change: moderator+; support can read)
+
+Staff manage the list behind `GET /areas` (spec G8). Nothing is ever deleted.
+
+| Try | Expect |
+| --- | --- |
+| `GET /admin/neighbourhoods` (any staff role) | 70 active ones, sorted by sub-city then name, each with `subCityNameEn`, `active`, `createdByAdminId` (null for seeded ones) |
+| `… ?subCityId=<id>&includeInactive=true` | that sub-city only, deactivated ones included (`active: false`) |
+| `POST /admin/neighbourhoods { "subCityId": "<Bole's id>", "nameEn": "Test place", "nameAm": "የሙከራ ሰፈር" }` | 201; it appears in `GET /areas`; `GET /admin/actions` shows `neighbourhood.create` with the names |
+| The same again, or `"nameEn": "PIASSA"` in Arada | 409 `NEIGHBOURHOOD_EXISTS` |
+| `PATCH /admin/neighbourhoods/<id> { "nameEn": "Piazza" }` | 200; `GET /areas` shows the new name; the audit row has `oldNameEn` / `newNameEn` |
+| `PATCH …` with `{}` | 400 `NO_FIELDS_TO_UPDATE` |
+| `POST /admin/neighbourhoods/<id>/deactivate { "note": "…" }` | 200 `active: false`; gone from `GET /areas`, still in the admin list with `includeInactive=true` |
+| Deactivate again | 409 `NEIGHBOURHOOD_ALREADY_INACTIVE` |
+| `POST /admin/neighbourhoods/<id>/reactivate` | 200 `active: true`; back in `GET /areas` |
+| A note like `owner 123456789012` | 400 `NOTE_CONTAINS_ID_NUMBER`; nothing changes |
+| `DELETE /admin/neighbourhoods/<id>` | 404 (there is no delete) |
+| Any change as support | 403 `INSUFFICIENT_ROLE` |
+
 ## Worth trying on purpose
 
 | Try | Expect |
