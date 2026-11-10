@@ -57,7 +57,7 @@ src/
     sms/             # SmsSender interface + ConsoleSmsSender (selected by SMS_PROVIDER)
     verification/    # Didit client, webhook, state machine, background jobs
     admin/           # staff auth, roles, manual review, bans, audit log
-    areas/           # Addis Ababa sub-cities and neighbourhoods (seeded), GET /areas
+    areas/           # Addis Ababa sub-cities and neighbourhoods (seeded), GET /areas, staff management
 test/               # e2e specs; global-setup.ts recreates + migrates rental_test each run
 docs/
 ```

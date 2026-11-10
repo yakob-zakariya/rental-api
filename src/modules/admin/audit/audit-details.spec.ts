@@ -61,12 +61,24 @@ describe('assertSafeDetails', () => {
         enteredFields: ['idNumber', 'dateOfBirth'],
         previousOutcome: 'manual_review',
         newOutcome: 'approved',
+        oldNameEn: 'Piassa',
+        newNameEn: 'Piazza',
+        oldNameAm: 'ፒያሳ',
+        newNameAm: 'ፒያሳ',
       }),
     ).not.toThrow();
     expect(() => assertSafeDetails({})).not.toThrow();
   });
 
-  it.each(['reason', 'note', 'reasonCode'] as const)(
+  it.each([
+    'reason',
+    'note',
+    'reasonCode',
+    'oldNameEn',
+    'newNameEn',
+    'oldNameAm',
+    'newNameAm',
+  ] as const)(
     'rejects an ID number in %s with 400 NOTE_CONTAINS_ID_NUMBER',
     (key) => {
       try {
