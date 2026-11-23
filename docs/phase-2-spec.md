@@ -62,8 +62,25 @@ correct, not complete). Unique (`sub_city_id`, `lower(name_en)`), deactivated ro
 a deactivated name is reactivated rather than added again. **Never hard-deleted** (G8).
 
 ### `service_area`
-One row: the Addis Ababa city boundary as `geography(MultiPolygon, 4326)`, loaded by a migration
-(source: section 5, G1).
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | uuid PK | |
+| city | varchar unique | `Addis Ababa` |
+| boundary | geography(MultiPolygon, 4326) | never returned by the API |
+| source | varchar | where the boundary came from, with version and licence |
+| created_at | timestamptz | |
+
+One row at launch, loaded by a migration (G1). A newer boundary is a new migration.
+
+### `out_of_area_demand` — refused pins, for seeing demand outside the city (G1)
+| Column | Type | Notes |
+| --- | --- | --- |
+| lat_rounded, lng_rounded | numeric(5,2), numeric(6,2) | the refused pin rounded to 0.01° (about 1.1 km) |
+| day | date | Africa/Addis_Ababa date, no time |
+| refusals | int | how many pins in that cell on that day |
+
+Primary key (`lat_rounded`, `lng_rounded`, `day`). **No user, listing, device or exact time** is
+stored, so a row can't be linked back to anyone.
 
 ### `properties` — the physical home
 | Column | Type | Notes |
@@ -286,9 +303,14 @@ Any other transition: 409 `INVALID_LISTING_STATE`. **Active** means `pending_rev
 
 - **G1** The lister sets the location by GPS or by dragging a pin, and picks the sub-city and the
   neighbourhood from our list (the neighbourhood is required). The pin must be inside the Addis
-  Ababa boundary (`service_area`, 400 `LOCATION_OUTSIDE_SERVICE_AREA`). The boundary comes from
-  OpenStreetMap; its licence (ODbL) needs attribution, which the app shows anyway for the
-  OpenStreetMap-based map tiles. There's no check that the pin is inside the chosen sub-city
+  Ababa boundary (`service_area`, 400 `LOCATION_OUTSIDE_SERVICE_AREA`): **strict, no margin**
+  (decided 2026-11-10), a point exactly on the boundary counts as inside. The boundary is
+  OpenStreetMap relation 1707699 (version 25, fetched 2026-11-10; 538 km²), unmodified; its licence
+  (ODbL) needs attribution, which the app shows anyway for the OpenStreetMap-based map tiles.
+  - **A refused pin** (decided 2026-11-10): the app shows a friendly message ("We're only in
+    Addis Ababa for now"). The API records it in `out_of_area_demand`, rounded to about 1 km, by
+    day, with no link to the user, so staff can later see where demand is outside the city. Viewing
+    it is a database query for now; no endpoint. There's no check that the pin is inside the chosen sub-city
   (we have no sub-city boundaries); the reviewer sees both on a map.
   - **"My neighbourhood isn't listed":** the lister picks the nearest neighbourhood and types the
     real name (`unlisted_neighbourhood_name`, 1–100 characters). The reviewer sees it (R1) and can
@@ -495,6 +517,9 @@ MinIO or a fake `PhotoStorage`; tests never call FCM.
   with the reason code (neutral `GUIDELINES` for suspected fraud); "my neighbourhood isn't
   listed" lets the lister pick the nearest one and type the real name, which the reviewer sees
   and can add. → L5, G1, G7, N5, R1
+- **Service area (2026-11-10):** strict, no margin outside the OpenStreetMap boundary. A refused
+  pin gets a friendly message in the app and is recorded rounded to about 1 km, with no user
+  link. → G1
 - **Neighbourhood management (2026-11-09):** the reviewed list is seeded as it is; staff add,
   rename (English and Amharic) and deactivate neighbourhoods (hidden from the picker, existing
   listings keep them); never hard-deleted; all audited. → G7, G8

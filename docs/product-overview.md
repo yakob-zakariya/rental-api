@@ -300,4 +300,7 @@ Things that are fine for local development but must be settled before (or when) 
   service-account JSON on the server only, and `PUSH_PROVIDER=fcm` (the app refuses to start in
   production with `console`).
 - **OpenStreetMap attribution.** The Addis Ababa boundary and the map tiles come from
-  OpenStreetMap (ODbL); show the attribution the licence requires.
+  OpenStreetMap (ODbL); show the attribution the licence requires ("© OpenStreetMap
+  contributors"). The boundary is an unmodified extract (relation 1707699), so the share-alike
+  terms should be easy to meet (we can offer that extract under ODbL); confirm this with the
+  lawyer alongside the brokerage check.

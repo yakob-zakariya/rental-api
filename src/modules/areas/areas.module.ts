@@ -6,13 +6,19 @@ import { NeighbourhoodsAdminService } from './admin/neighbourhoods-admin.service
 import { AreasController } from './areas.controller.js';
 import { AreasService } from './areas.service.js';
 import { Neighbourhood } from './neighbourhood.entity.js';
+import { ServiceArea } from './service-area.entity.js';
+import { ServiceAreaService } from './service-area.service.js';
 import { SubCity } from './sub-city.entity.js';
 
 @Module({
   // AdminModule: the staff guards and the audit service for the admin controller (spec G8).
-  imports: [TypeOrmModule.forFeature([SubCity, Neighbourhood]), AdminModule],
+  imports: [
+    TypeOrmModule.forFeature([SubCity, Neighbourhood, ServiceArea]),
+    AdminModule,
+  ],
   controllers: [AreasController, NeighbourhoodsAdminController],
-  providers: [AreasService, NeighbourhoodsAdminService],
-  exports: [TypeOrmModule, AreasService],
+  providers: [AreasService, NeighbourhoodsAdminService, ServiceAreaService],
+  // ServiceAreaService: the pin check for listings (spec G1, T2.2).
+  exports: [TypeOrmModule, AreasService, ServiceAreaService],
 })
 export class AreasModule {}

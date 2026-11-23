@@ -21,9 +21,10 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
 - [x] **T1.2 Staff manage neighbourhoods.** Add, list, rename, deactivate, reactivate; never
       delete; new audit types and detail keys (G7, G8, S1); tests. (`propertyId` on add moved to
       T4.3: properties don't exist yet.)
-- [ ] **T1.3 Service area.** Get the Addis Ababa boundary from OpenStreetMap, check the licence and
+- [x] **T1.3 Service area.** Get the Addis Ababa boundary from OpenStreetMap, check the licence and
       the attribution it needs, load it in a migration (`service_area`); an `isInsideServiceArea`
-      check (G1); tests with points inside, outside and near the edge.
+      check (G1); tests with points inside, outside and near the edge. Done 2026-11-10: relation
+      1707699 v25, strict (no margin); `ServiceAreaService.isInside(lat, lng)`.
 
 ## Step 2 — Properties and listings
 
@@ -32,6 +33,10 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
 - [ ] **T2.2 Drafts.** `POST /listings`, `PATCH` (draft only for now), `DELETE` a draft,
       `GET /me/listings`; field validation (section 2, L13), ownership (L3), the service-area check
       and `approx_location`, "my neighbourhood isn't listed" (G1, G2); tests.
+      - `LOCATION_OUTSIDE_SERVICE_AREA`: record the refused pin in `out_of_area_demand` (table and
+        migration here), rounded to 0.01° by day, no user link; `api-for-mobile.md` tells the app
+        to show "We're only in Addis Ababa for now". Tests: the row is written, rounded, and holds
+        nothing that identifies the user.
 - [ ] **T2.3 Submit and withdraw.** L2 (verified, complete, 3+ photos — tested with a fake photo
       count until Step 3 — and the cap), L4, `listing_history` rows; tests.
 - [ ] **T2.4 Editing after submission.** L5 and L6 (which fields send a listing back to review,

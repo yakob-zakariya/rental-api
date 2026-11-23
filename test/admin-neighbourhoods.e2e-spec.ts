@@ -478,7 +478,7 @@ describe('staff manage neighbourhoods (e2e, spec G8)', () => {
         ])
       )
         .map((r) => r.status)
-        .sort();
+        .sort((a, b) => a - b);
 
       expect(statuses).toEqual([200, 409]);
       expect(await actions()).toHaveLength(1);
