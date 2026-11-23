@@ -28,8 +28,10 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
 
 ## Step 2 — Properties and listings
 
-- [ ] **T2.1 Entities and migration.** `properties`, `listings`, `listing_history`, all enums as
+- [x] **T2.1 Entities and migration.** `properties`, `listings`, `listing_history`, all enums as
       Postgres enums, the L10 partial unique index, the GiST index on `approx_location`.
+      Done 2026-11-23: drafts may be half-filled; `listings.version` added (R2); history rows
+      can't be updated.
 - [ ] **T2.2 Drafts.** `POST /listings`, `PATCH` (draft only for now), `DELETE` a draft,
       `GET /me/listings`; field validation (section 2, L13), ownership (L3), the service-area check
       and `approx_location`, "my neighbourhood isn't listed" (G1, G2); tests.

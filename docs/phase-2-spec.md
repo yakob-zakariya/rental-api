@@ -107,6 +107,13 @@ stored, so a row can't be linked back to anyone.
 
 GiST index on `approx_location` (search). `location` is never searched.
 
+**Drafts may be half-filled** (decided 2026-11-23): the app saves the form step by step and needs
+a draft before it can upload photos, so the fields a lister fills in are nullable until they
+submit, and submitting checks them (L2, `LISTING_INCOMPLETE`). Null on a yes/no field means "not
+answered yet", never "no". Past `draft`, the database also requires the listing's own fields
+(rent, advance months, negotiable, available-from). `location` and `landmark` are never loaded
+unless a query asks for them by name (G3).
+
 ### `property_photos`
 | Column | Type | Notes |
 | --- | --- | --- |
@@ -134,6 +141,7 @@ No capture time or capture GPS: camera-only photos are not at launch, and P2 str
 | staff_reason_code | enum, null | the last rejection or takedown reason (R4) |
 | lister_note | varchar(300) null | staff's note to the lister with that decision (R4) |
 | needs_review | boolean | an `expired` listing changed in a way that needs review (L6) |
+| version | int | starts at 1; +1 on every edit of the listing, its property or its photos. A review decision names the version it looked at (R2) (added 2026-11-23) |
 | submitted_at, published_at, last_confirmed_at, stale_at, expired_at, closed_at | timestamptz null | |
 | reviewed_by_admin_id | uuid FK → admin_users, null | |
 | created_at, updated_at | timestamptz | |
@@ -159,6 +167,7 @@ Partial unique index: at most one listing per property in `draft`, `pending_revi
 | created_at | timestamptz | |
 
 Written in the same transaction as the change. Staff changes are also in `admin_actions` (S1).
+Rows are never changed (a trigger refuses UPDATE); deleting a draft deletes its rows with it.
 
 ### `availability_checks`
 | Column | Type | Notes |

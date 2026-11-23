@@ -58,6 +58,7 @@ src/
     verification/    # Didit client, webhook, state machine, background jobs
     admin/           # staff auth, roles, manual review, bans, audit log
     areas/           # Addis Ababa sub-cities and neighbourhoods (seeded), GET /areas, staff management
+    listings/        # properties, listings, listing history (the listing state machine, spec L9)
 test/               # e2e specs; global-setup.ts recreates + migrates rental_test each run
 docs/
 ```
