@@ -1361,7 +1361,7 @@
                 "areas"
               ]
             },
-            "description": "No token. 200: the 11 Addis Ababa sub-cities, each with its active neighbourhoods, in English and Amharic, sorted by English name (spec G7).",
+            "description": "No token. 200: the 11 Addis Ababa sub-cities, each with its active neighbourhoods, in English and Amharic, sorted by English name (spec G7). Saves `listingNeighbourhoodId` for **8. Listings**.",
             "auth": {
               "type": "noauth"
             }
@@ -1374,7 +1374,400 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('11 sub-cities', () => pm.expect(pm.response.json()).to.have.lengthOf(11));"
+                  "pm.test('11 sub-cities', () => pm.expect(pm.response.json()).to.have.lengthOf(11));",
+                  "// For 8. Listings: the first neighbourhood of the first sub-city.",
+                  "const n = pm.response.json()[0]?.neighbourhoods?.[0];",
+                  "if (n) pm.environment.set('listingNeighbourhoodId', n.id);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "8. Listings",
+      "description": "The lister's drafts (T2.2), with the app token. Submitting, review and browsing come later.",
+      "item": [
+        {
+          "name": "Create an empty draft",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/listings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "listings"
+              ]
+            },
+            "description": "App token; no verification needed (L1). 201: `status: draft`, `version: 1`, every field null, `missing` lists the 15 required fields. Saves `listingId`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('everything missing', () => pm.expect(pm.response.json().missing).to.have.lengthOf(15));",
+                  "if (pm.response.code === 201) pm.environment.set('listingId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create a full draft",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/listings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "listings"
+              ]
+            },
+            "description": "Run **7. Areas** first: it saves `listingNeighbourhoodId`. `availableFrom` is set to 30 days from now by the pre-request script. 201: `missing: []`, amenities stored as `[\"parking\", \"guard\"]`, the sub-city and neighbourhood named, `approxLocation` 200–400 m from `location`. Saves `listingId`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"neighbourhoodId\": \"{{listingNeighbourhoodId}}\",\n  \"type\": \"apartment\",\n  \"bedrooms\": 2,\n  \"bathrooms\": 1,\n  \"furnished\": false,\n  \"separateWaterMeter\": true,\n  \"separateElectricityMeter\": false,\n  \"sizeM2\": 85,\n  \"floor\": 3,\n  \"amenities\": [\"guard\", \"parking\"],\n  \"description\": \"Bright two-bedroom flat, five minutes from the main road.\",\n  \"location\": { \"lat\": 9.0102, \"lng\": 38.7606 },\n  \"landmark\": \"Blue gate behind the pharmacy\",\n  \"listerRelation\": \"owner\",\n  \"monthlyRentBirr\": 25000,\n  \"advanceMonths\": 2,\n  \"negotiable\": true,\n  \"availableFrom\": \"{{availableFrom}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// 30 days from now (YYYY-MM-DD): available-from can't be in the past (L13).",
+                  "pm.variables.set('availableFrom', new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('nothing missing', () => pm.expect(pm.response.json().missing).to.eql([]));",
+                  "if (pm.response.code === 201) pm.environment.set('listingId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "My listings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/me/listings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "me",
+                "listings"
+              ]
+            },
+            "description": "200: your listings in every state, newest first, with the private fields (exact point, landmark, typed neighbourhood name) that only you and staff see."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Edit a draft (rent)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/listings/{{listingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "listings",
+                "{{listingId}}"
+              ]
+            },
+            "description": "200; `version` goes up by 1. Send it again: `version` stays (nothing changed).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"monthlyRentBirr\": 18000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Clear fields",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/listings/{{listingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "listings",
+                "{{listingId}}"
+              ]
+            },
+            "description": "`null` clears a field and `[]` clears the amenities; fields not sent are kept.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sizeM2\": null,\n  \"amenities\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('cleared', () => pm.expect(pm.response.json().property.sizeM2).to.eql(null));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Move the pin",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/listings/{{listingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "listings",
+                "{{listingId}}"
+              ]
+            },
+            "description": "The airport. 200: a new `approxLocation` is made, 200–400 m from the new point (G2). Editing any other field keeps the old one.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"location\": {\n    \"lat\": 8.9792,\n    \"lng\": 38.7966\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pin outside Addis Ababa (expected failure)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/listings/{{listingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "listings",
+                "{{listingId}}"
+              ]
+            },
+            "description": "Burayu, about 1.3 km outside. 400 `LOCATION_OUTSIDE_SERVICE_AREA`; the draft is unchanged. The refusal is counted in `out_of_area_demand` (rounded to ~1 km, by day, no user).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"location\": {\n    \"lat\": 9.036,\n    \"lng\": 38.6608\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('outside the service area', () => pm.expect(pm.response.json().code).to.eql('LOCATION_OUTSIDE_SERVICE_AREA'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Over a limit (expected failure)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/listings/{{listingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "listings",
+                "{{listingId}}"
+              ]
+            },
+            "description": "400 `BEDROOMS_ABOVE_LIMIT` with `max: 20`. Each limited field has its own code: `BATHROOMS_ABOVE_LIMIT` (20), `FLOOR_ABOVE_LIMIT` (60), `SIZE_ABOVE_LIMIT` (5000), `RENT_ABOVE_LIMIT` (2,000,000).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bedrooms\": 21\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('bedrooms over the limit', () => pm.expect(pm.response.json()).to.eql({ code: 'BEDROOMS_ABOVE_LIMIT', max: 20 }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete a draft",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/listings/{{listingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "listings",
+                "{{listingId}}"
+              ]
+            },
+            "description": "204: the draft, its history and (for a first draft) its property are deleted. Not a draft: 409 `INVALID_LISTING_STATE`; someone else's: 404 `LISTING_NOT_FOUND`."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 204', () => pm.response.to.have.status(204));",
+                  "if (pm.response.code === 204) pm.environment.set('listingId', '');"
                 ]
               }
             }

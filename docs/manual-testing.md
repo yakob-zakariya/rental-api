@@ -47,6 +47,8 @@ Notes:
   "Webhooks" below).
 - **6. Admin:** set `adminEmail`/`adminPassword` (from `npm run admin:create`), then **Admin login**
   saves `adminToken`; admin requests use it instead of the app token.
+- **8. Listings:** uses the app token. **Create a full draft** saves `listingId` (and fills in
+  `neighbourhoodId` from `GET /areas` first, so run **7. Areas → GET /areas** before it).
 - Never save real tokens or passwords back into the exported files: they're committed to git.
 
 ## Walkthrough
@@ -170,6 +172,34 @@ Staff manage the list behind `GET /areas` (spec G8). Nothing is ever deleted.
 | A note like `owner 123456789012` | 400 `NOTE_CONTAINS_ID_NUMBER`; nothing changes |
 | `DELETE /admin/neighbourhoods/<id>` | 404 (there is no delete) |
 | Any change as support | 403 `INSUFFICIENT_ROLE` |
+
+## Listings: drafts (app token)
+
+Signed in with the app token (verification isn't needed to draft, L1). A draft may be
+half-filled; `missing` in every answer lists what still has to be filled in before submitting
+(submitting comes in T2.3). Get a neighbourhood id from `GET /areas`.
+
+| Try | Expect |
+| --- | --- |
+| `POST /listings` with `{}` | 201, `status: draft`, `version: 1`, `missing` lists all 15 required fields |
+| `POST /listings` with every field (Postman: **Create a full draft**; `location` `{ "lat": 9.0102, "lng": 38.7606 }` is Meskel Square) | 201, `missing: []`; `property.subCity` and `property.neighbourhood` named in both languages; `approxLocation` is near, not equal to, `location` |
+| `PATCH /listings/<id> { "monthlyRentBirr": 18000 }` | 200, `version` + 1 |
+| The same PATCH again | 200, `version` unchanged (nothing changed) |
+| `PATCH … { "sizeM2": null, "amenities": [] }` | both cleared; fields not sent are kept |
+| `PATCH … { "bedrooms": 3 }`, then compare `approxLocation` | the same as before: it's only made again when the exact point moves |
+| `PATCH … { "location": { "lat": 8.9792, "lng": 38.7966 } }` (the airport) | a new `approxLocation`, 200–400 m from the new point |
+| `PATCH … {}` | 400 `NO_FIELDS_TO_UPDATE` |
+| `location` at Burayu `{ "lat": 9.036, "lng": 38.6608 }` | 400 `LOCATION_OUTSIDE_SERVICE_AREA`; in psql, `SELECT * FROM out_of_area_demand;` shows `9.04, 38.66`, today's date, `refusals` 1 (send it again: 2) |
+| `"bedrooms": 21` (or bathrooms 21, floor 61, `sizeM2` 5001, rent 2000001) | 400 `BEDROOMS_ABOVE_LIMIT` with `max: 20` (each field has its own code) |
+| `"monthlyRentBirr": 1500.5` or `"1500"` | 400 `VALIDATION_FAILED` (whole birr only) |
+| `"availableFrom"` yesterday | 400 `AVAILABLE_FROM_IN_PAST` |
+| `"neighbourhoodId"` of a deactivated neighbourhood (deactivate one as staff first) | 400 `NEIGHBOURHOOD_INACTIVE` |
+| `"status": "live"` in the body | 400 `VALIDATION_FAILED` (the status can't be set) |
+| An 11th draft | 409 `DRAFT_LISTING_LIMIT`, `max: 10` |
+| `GET /me/listings` | your listings, newest first, with the exact point and landmark (only you see them) |
+| Someone else's listing id (sign in with a second phone) in PATCH or DELETE | 404 `LISTING_NOT_FOUND` |
+| `DELETE /listings/<id>` | 204; gone from `GET /me/listings`, its property too |
+| PATCH or DELETE a listing that isn't a draft (in psql: `UPDATE listings SET status = 'pending_review', …`) | 409 `INVALID_LISTING_STATE` |
 
 ## Worth trying on purpose
 

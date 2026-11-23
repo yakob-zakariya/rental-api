@@ -32,13 +32,15 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
       Postgres enums, the L10 partial unique index, the GiST index on `approx_location`.
       Done 2026-11-23: drafts may be half-filled; `listings.version` added (R2); history rows
       can't be updated.
-- [ ] **T2.2 Drafts.** `POST /listings`, `PATCH` (draft only for now), `DELETE` a draft,
+- [x] **T2.2 Drafts.** `POST /listings`, `PATCH` (draft only for now), `DELETE` a draft,
       `GET /me/listings`; field validation (section 2, L13), ownership (L3), the service-area check
       and `approx_location`, "my neighbourhood isn't listed" (G1, G2); tests.
       - `LOCATION_OUTSIDE_SERVICE_AREA`: record the refused pin in `out_of_area_demand` (table and
         migration here), rounded to 0.01° by day, no user link; `api-for-mobile.md` tells the app
         to show "We're only in Addis Ababa for now". Tests: the row is written, rounded, and holds
         nothing that identifies the user.
+      - Done 2026-11-23: also the draft limit (`MAX_DRAFT_LISTINGS`, 409 `DRAFT_LISTING_LIMIT`),
+        upper limits with their own codes (`listing-limits.ts`), `missing` on every listing.
 - [ ] **T2.3 Submit and withdraw.** L2 (verified, complete, 3+ photos — tested with a fake photo
       count until Step 3 — and the cap), L4, `listing_history` rows; tests.
 - [ ] **T2.4 Editing after submission.** L5 and L6 (which fields send a listing back to review,
@@ -92,6 +94,11 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
       restore, expiry; tests with the clock moved and the job run twice.
 - [ ] **T6.4 Review notices.** Push on approve, reject and takedown, with the reason code (N5);
       tests.
+- [ ] **T6.5 Clean up untouched drafts** (added 2026-11-23). Drafts nobody has edited for a long
+      time hold photos in storage (from Step 3). Before this task, decide with the user: after
+      how long, whether the lister is warned first (push), and whether `updated_at` is the right
+      "last touched". Then a job that deletes them with their photos (from storage too); tests
+      with the clock moved and the job run twice.
 
 ## Step 7 — Bans
 

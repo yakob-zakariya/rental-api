@@ -240,7 +240,8 @@ Any other transition: 409 `INVALID_LISTING_STATE`. **Active** means `pending_rev
 
 ### Rules
 - **L1** Any signed-in, active user can create a draft (overview §3). Verification is not needed
-  to draft (lazy verification, overview §5).
+  to draft (lazy verification, overview §5). At most `MAX_DRAFT_LISTINGS` (default 10) drafts per
+  user at once: 409 `DRAFT_LISTING_LIMIT` with `max` (decided 2026-11-23). Only drafts count.
 - **L2** Submitting (and any other move into an active state from a non-active one: reopen, L6)
   needs:
   - `verification_status = approved` (403 `VERIFICATION_REQUIRED`, as `VerifiedGuard`);
@@ -286,7 +287,13 @@ Any other transition: 409 `INVALID_LISTING_STATE`. **Active** means `pending_rev
   `listing_history`. ("Rented in the app" doesn't pick the tenant yet; that comes with contact
   requests in Phase 3.)
 - **L13** Money fields are integers of birr; anything else is 400 (hard rule 6).
-  `advance_months` is 1–12. `available_from` can't be in the past when it is set or changed.
+  `advance_months` is 1–12. `available_from` can't be in the past (Addis Ababa date) when it is
+  set or changed: 400 `AVAILABLE_FROM_IN_PAST`. Upper limits (decided 2026-11-23, generous so no
+  real home is refused; in one constants file, `listing-limits.ts`): bedrooms ≤ 20, bathrooms
+  ≤ 20, floor ≤ 60, size ≤ 5000 m², rent ≤ 2,000,000 birr. Over a limit: 400 with the field's own
+  code (`BEDROOMS_ABOVE_LIMIT`, `BATHROOMS_ABOVE_LIMIT`, `FLOOR_ABOVE_LIMIT`, `SIZE_ABOVE_LIMIT`,
+  `RENT_ABOVE_LIMIT`) and `max`. A neighbourhood id that doesn't exist: 400
+  `NEIGHBOURHOOD_NOT_FOUND`.
 
 ## 4. Photos
 
@@ -461,6 +468,7 @@ PHOTO_MAX_BYTES=10485760           # 10 MB per upload
 PHOTO_MAX_DIMENSION=2048           # longest side after re-encoding
 PHOTO_HASH_MAX_DISTANCE=           # Hamming distance for a match; set after testing (P3)
 LISTING_MAX_ACTIVE_PER_USER=10     # L2 hard cap
+MAX_DRAFT_LISTINGS=10              # L1: drafts per user at once
 LISTING_CHECK_INTERVAL=7d          # F1
 LISTING_CHECK_ANSWER_WINDOW=48h    # F3
 LISTING_STALE_TO_EXPIRED=30d       # F5
@@ -529,6 +537,11 @@ MinIO or a fake `PhotoStorage`; tests never call FCM.
 - **Service area (2026-11-10):** strict, no margin outside the OpenStreetMap boundary. A refused
   pin gets a friendly message in the app and is recorded rounded to about 1 km, with no user
   link. → G1
+- **Drafts (2026-11-23):** a draft may be half-filled; everything is required to submit except
+  size, floor, amenities and the typed neighbourhood name (landmark and owner/representative are
+  required). At most 10 drafts per user (config). Generous upper limits on bedrooms, bathrooms,
+  floor, size and rent, each with its own error code. A later task cleans up drafts untouched for
+  a long time (T6.5). → L1, L2, L13
 - **Neighbourhood management (2026-11-09):** the reviewed list is seeded as it is; staff add,
   rename (English and Amharic) and deactivate neighbourhoods (hidden from the picker, existing
   listings keep them); never hard-deleted; all audited. → G7, G8

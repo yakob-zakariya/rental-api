@@ -1,7 +1,7 @@
 # rental-api for the mobile app
 
-The contract the Flutter app (`rental-app`) builds against, for Phase 1. Source of truth:
-`docs/phase-1-spec.md` and the running API's Swagger at `/docs`. If this page and the API ever
+The contract the Flutter app (`rental-app`) builds against, for Phases 1 and 2 (so far). Source
+of truth: `docs/phase-1-spec.md`, `docs/phase-2-spec.md` and the running API's Swagger at `/docs`. If this page and the API ever
 disagree, the API wins — report it so this page gets fixed.
 
 - **Base URL (development, physical phone):** connect the phone by USB, run
@@ -49,6 +49,15 @@ Validation errors also list the fields (values are never echoed back):
 | `VERIFICATION_RETRY_LIMIT` | 429 | start verification | Out of tries for 24 h: show `retryAfterSeconds`; offer manual review if `manualReviewAvailable` |
 | `VERIFICATION_PROVIDER_UNAVAILABLE` | 503 | start verification | "Try again in a moment" (`retryAfterSeconds` if present) |
 | `MANUAL_REVIEW_NOT_AVAILABLE` | 409 | manual review | Refresh the status screen |
+| `LOCATION_OUTSIDE_SERVICE_AREA` | 400 | listing create / edit | Friendly, not an error screen: **"We're only in Addis Ababa for now"**; let them move the pin |
+| `BEDROOMS_ABOVE_LIMIT`, `BATHROOMS_ABOVE_LIMIT`, `FLOOR_ABOVE_LIMIT`, `SIZE_ABOVE_LIMIT`, `RENT_ABOVE_LIMIT` | 400 | listing create / edit | "At most `max`" on that field (the app's form should stop it first) |
+| `AVAILABLE_FROM_IN_PAST` | 400 | listing create / edit | "Pick today or a later date" |
+| `NEIGHBOURHOOD_INACTIVE` | 400 | listing create / edit | The neighbourhood was removed from the list: fetch `GET /areas` again and ask them to pick |
+| `NEIGHBOURHOOD_NOT_FOUND` | 400 | listing create / edit | As above (a stale id) |
+| `DRAFT_LISTING_LIMIT` | 409 | listing create | "You have `max` unfinished listings: finish or delete one first" |
+| `NO_FIELDS_TO_UPDATE` | 400 | listing edit | A bug in the app's request (empty PATCH): log it |
+| `LISTING_NOT_FOUND` | 404 | listing edit / delete | Gone (deleted on another device): refresh "My listings" |
+| `INVALID_LISTING_STATE` | 409 | listing edit / delete | The listing moved on (for now only drafts can be edited or deleted): refresh "My listings" |
 
 ## Sign-in (phone + SMS code)
 
@@ -223,6 +232,104 @@ English and Amharic, both sorted by English name:
 - Staff can add, rename and deactivate neighbourhoods at any time, so fetch the list fresh (for
   example once per app start) rather than shipping a copy in the app. A deactivated one
   disappears from this list, but a listing that already uses it keeps it.
+
+## Listings: drafts (the lister)
+
+Signed in (app token). **No verification is needed to make a draft**; it's needed to submit
+(coming next). A draft can be saved half-filled, so the app can save the form step by step.
+Photos come in a later step: they're uploaded to a draft, so create the draft first.
+
+### Fields (`POST /listings` and `PATCH /listings/:id`)
+
+Every field is optional in both. In a PATCH, a field you don't send is left as it is, and `null`
+clears it (for amenities, send `[]`).
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `neighbourhoodId` | uuid | From `GET /areas`. If the real one isn't listed, the nearest one… |
+| `unlistedNeighbourhoodName` | string, 1–100 | …plus the real name ("my neighbourhood isn't listed"). Optional; never shown publicly |
+| `type` | `condominium`, `apartment`, `villa_house`, `compound_room`, `studio` | |
+| `bedrooms` | int 0–20 | |
+| `bathrooms` | int 0–20 | **0 = shared bathroom**: show "Shared bathroom" |
+| `furnished`, `separateWaterMeter`, `separateElectricityMeter` | boolean | `null` = not answered yet (don't show it as "No") |
+| `sizeM2` | int 1–5000 | optional, even to submit |
+| `floor` | int 0–60 | 0 = ground floor; optional, even to submit |
+| `amenities` | array of `parking`, `gated_compound`, `guard` | no duplicates; `[]` = none; optional |
+| `description` | string, 1–2000 | |
+| `location` | `{ "lat": 9.0102, "lng": 38.7606 }` | the exact point (GPS or pin), **latitude first**; must be inside Addis Ababa |
+| `landmark` | string, 1–200 | e.g. "Blue gate behind the pharmacy"; private like the exact point |
+| `listerRelation` | `owner`, `representative` | shown on the listing |
+| `monthlyRentBirr` | int 1–2,000,000 | whole birr only (no decimals, not a string) |
+| `advanceMonths` | int 1–12 | |
+| `negotiable` | boolean | |
+| `availableFrom` | `YYYY-MM-DD` | today (Addis Ababa) or later |
+
+Text is trimmed. Lengths count characters the way the server does (an emoji counts as one). The
+status, version and ids can't be sent: they're rejected as unknown fields.
+
+### `POST /listings`
+
+Body: any of the fields above (`{}` is fine). → `201` with the listing (below). Errors:
+`VALIDATION_FAILED`, the `…_ABOVE_LIMIT` codes, `AVAILABLE_FROM_IN_PAST`,
+`LOCATION_OUTSIDE_SERVICE_AREA`, `NEIGHBOURHOOD_NOT_FOUND`, `NEIGHBOURHOOD_INACTIVE`,
+`DRAFT_LISTING_LIMIT` (at most 10 drafts at once, with `max`).
+
+### `PATCH /listings/:id`
+
+Body: the fields to change. → `200` with the listing. Only drafts for now (other states come
+with submitting and editing after review). Errors: as POST, plus `NO_FIELDS_TO_UPDATE`,
+`LISTING_NOT_FOUND`, `INVALID_LISTING_STATE`.
+
+### `DELETE /listings/:id`
+
+→ `204`. Only drafts. Errors: `LISTING_NOT_FOUND`, `INVALID_LISTING_STATE`.
+
+### `GET /me/listings`
+
+→ `200` with all of your listings in every state, newest first (no paging: a lister has only a
+few).
+
+### The listing (your own view)
+
+```json
+{
+  "id": "…", "status": "draft", "version": 3,
+  "missing": ["landmark", "availableFrom"],
+  "monthlyRentBirr": 25000, "advanceMonths": 2, "negotiable": true, "availableFrom": null,
+  "closeReason": null, "staffReasonCode": null, "listerNote": null,
+  "property": {
+    "id": "…",
+    "subCity": { "id": "…", "nameEn": "Bole", "nameAm": "ቦሌ" },
+    "neighbourhood": { "id": "…", "nameEn": "Gerji", "nameAm": "ገርጂ", "active": true },
+    "unlistedNeighbourhoodName": null,
+    "type": "apartment", "bedrooms": 2, "bathrooms": 1, "furnished": false,
+    "separateWaterMeter": true, "separateElectricityMeter": false,
+    "sizeM2": 85, "floor": 3, "amenities": ["parking", "guard"],
+    "description": "…",
+    "location": { "lat": 9.0102, "lng": 38.7606 },
+    "approxLocation": { "lat": 9.0121, "lng": 38.7631 },
+    "landmark": null, "listerRelation": "owner"
+  },
+  "createdAt": "…", "updatedAt": "…", "submittedAt": null, "publishedAt": null, "closedAt": null
+}
+```
+
+- **`missing`**: the fields still needed before submitting, in form order. Use it for "2 things
+  left" and to jump to the first one. Photos are counted separately.
+- **`location`, `landmark`, `unlistedNeighbourhoodName`** are private: only you (and staff) get
+  them. **`approxLocation`** is what the public will see: the exact point moved 200–400 m in a
+  random direction. Show the public view as a circle around it, never as a pin on the house. It
+  changes only when the exact point moves.
+- **`neighbourhood.active: false`**: staff removed it from the list. The listing keeps it, but it
+  can't be picked again.
+- **`version`** goes up on every real change (sending the same values again doesn't count).
+- Amenities come back in a fixed order (`parking`, `gated_compound`, `guard`).
+
+### A pin outside Addis Ababa
+
+`400 LOCATION_OUTSIDE_SERVICE_AREA`: show a friendly message, **"We're only in Addis Ababa for
+now"**, and let them move the pin. Nothing is saved. The server counts refused pins by area
+(rounded to about 1 km, with no link to the user) to see where people want the service next.
 
 ## Health
 

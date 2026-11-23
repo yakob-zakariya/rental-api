@@ -36,4 +36,6 @@ export const TEST_ENV = {
   DIDIT_BASE_URL: 'https://verification.didit.me',
   DIDIT_ENVIRONMENT: 'sandbox',
   APP_VERIFICATION_CALLBACK_URL: 'https://app.example.test/verification/done',
+
+  MAX_DRAFT_LISTINGS: '10',
 } as const satisfies Record<string, string>;

@@ -1,12 +1,21 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AreasModule } from '../areas/areas.module.js';
 import { ListingHistory } from './listing-history.entity.js';
 import { Listing } from './listing.entity.js';
+import { ListingsController } from './listings.controller.js';
+import { ListingsService } from './listings.service.js';
 import { Property } from './property.entity.js';
 
-/** Properties, listings and their history (spec section 3). Endpoints come in T2.2 onward. */
+/** Properties, listings and their history (spec section 3). */
 @Module({
-  imports: [TypeOrmModule.forFeature([Property, Listing, ListingHistory])],
+  // AreasModule: the service-area check for the pin (G1).
+  imports: [
+    TypeOrmModule.forFeature([Property, Listing, ListingHistory]),
+    AreasModule,
+  ],
+  controllers: [ListingsController],
+  providers: [ListingsService],
   exports: [TypeOrmModule],
 })
 export class ListingsModule {}

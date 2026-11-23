@@ -204,6 +204,13 @@ export class EnvironmentVariables {
     message: '$property must be one of sandbox, live',
   })
   DIDIT_ENVIRONMENT: DiditEnvironment;
+
+  // --- Listings ---
+  // Drafts one user may hold at once (spec L1, decided 2026-11-23).
+  @Transform(toNumber)
+  @Min(1, { message: '$property must be at least 1' })
+  @IsInt({ message: '$property must be an integer' })
+  MAX_DRAFT_LISTINGS: number = 10;
 }
 
 // Variables whose .env.example value is a placeholder that production must replace.
