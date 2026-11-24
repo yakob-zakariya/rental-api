@@ -31,7 +31,7 @@ export interface ReconcileSummary {
 
 interface Verdict {
   storage_key: string;
-  thumbnail_key: string | null;
+  thumbnail_key: string;
   listing_status: ListingStatus | null;
 }
 
@@ -200,9 +200,7 @@ async function verdictsFor(
   return new Map(
     rows.flatMap((r) => [
       [r.storage_key, r.listing_status] as const,
-      ...(r.thumbnail_key
-        ? [[r.thumbnail_key, r.listing_status] as const]
-        : []),
+      [r.thumbnail_key, r.listing_status] as const,
     ]),
   );
 }

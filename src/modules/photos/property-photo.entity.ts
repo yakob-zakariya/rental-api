@@ -49,17 +49,11 @@ export class PropertyPhoto {
   storageKey: string;
 
   /**
-   * The thumbnail for browse cards (T3.4): properties/<property id>/<photo id>-thumb.jpg. Always
-   * stored, published, unpublished and deleted together with the photo. Null only for photos
-   * uploaded before T3.4 (development data), which show the full photo instead.
+   * The thumbnail for browse cards (T3.4): properties/<property id>/<photo id>-thumb.jpg. Every
+   * photo has one: stored, published, unpublished and deleted together with the photo.
    */
-  @Column({
-    name: 'thumbnail_key',
-    type: 'varchar',
-    length: 255,
-    nullable: true,
-  })
-  thumbnailKey: string | null;
+  @Column({ name: 'thumbnail_key', type: 'varchar', length: 255 })
+  thumbnailKey: string;
 
   /** Of the stored (re-encoded) file. */
   @Column({ type: 'int' })
@@ -85,7 +79,4 @@ export class PropertyPhoto {
  */
 export const photoFiles = (
   photo: Pick<PropertyPhoto, 'storageKey' | 'thumbnailKey'>,
-): string[] =>
-  photo.thumbnailKey
-    ? [photo.storageKey, photo.thumbnailKey]
-    : [photo.storageKey];
+): string[] => [photo.storageKey, photo.thumbnailKey];
