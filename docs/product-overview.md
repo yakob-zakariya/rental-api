@@ -297,6 +297,10 @@ Things that are fine for local development but must be settled before (or when) 
     or a screen as a copy), we need a **product decision before launch**.
   - **A kebele ID and a driving licence** must be rejected (or at worst land in
     `manual_review`), never `approved`.
+  - **A passport: how the name comes back** (decided 2026-11-24). The public name (L7) takes the
+    first word and the second word's initial. A Fayda ID card came back as "Yakob Zekariya Aman"
+    (given name first). Passports may come in capitals (handled) or surname first, which would
+    show the grandfather's name; fix `publicName` or the stored order if so.
 - **Swagger in production.** Off unless `SWAGGER_ENABLED=true`; if enabled, the `/docs` page must
   be behind staff auth first (T3.1).
 - **Choose the production photo storage.** Compare S3-compatible providers, including Cloudflare

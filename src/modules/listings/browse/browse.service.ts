@@ -4,7 +4,15 @@ import { DataSource } from 'typeorm';
 import type { EnvironmentVariables } from '../../../config/env.validation.js';
 import { cursorTimestampSql } from '../../admin/pagination.js';
 import { PhotoStorage } from '../../photos/photo-storage.js';
-import type { Amenity, PropertyType } from '../listings.enums.js';
+import { PropertyPhoto } from '../../photos/property-photo.entity.js';
+import { listingNotFound } from '../listing-state.js';
+import {
+  type Amenity,
+  type ListerRelation,
+  ListingStatus,
+  type PropertyType,
+} from '../listings.enums.js';
+import { publicName } from '../public-name.js';
 import {
   type BrowseSort,
   decodeBrowseCursor,
@@ -14,6 +22,7 @@ import {
   type BrowseCardDto,
   type BrowsePageDto,
   type BrowseQuery,
+  type ListingDetailDto,
   DEFAULT_BROWSE_PAGE,
   DEFAULT_RADIUS_KM,
 } from './browse.dto.js';
@@ -46,7 +55,19 @@ interface Row {
   cover_key: string | null;
   cover_width: number | null;
   cover_height: number | null;
+  full_name: string | null;
 }
+
+/**
+ * Who the public sees (G5, G6): live listings of listers who are active and still verified. A
+ * lister whose verification is revoked is hidden at once, like a banned one (decided 2026-11-24);
+ * T7.1 also expires their open listings.
+ */
+export const PUBLIC_VISIBILITY = [
+  `l.status = 'live'`,
+  `u.status = 'active'`,
+  `u.verification_status = 'approved'`,
+];
 
 /** Per sort: the ORDER BY, and the cursor comparison (the value, then the id as tie-break). */
 const ORDER: Record<
@@ -122,7 +143,7 @@ export class BrowseService {
 
     // The approximate point only (G4); rounded to 100 m.
     let distance = 'NULL::int';
-    const where = [`l.status = 'live'`, `u.status = 'active'`];
+    const where = PUBLIC_VISIBILITY.slice();
     if (near) {
       const point = `ST_SetSRID(ST_MakePoint(${param(near.lng)}, ${param(near.lat)}), 4326)::geography`;
       distance = `(round(ST_Distance(p.approx_location, ${point}) / 100) * 100)::int`;
@@ -170,7 +191,8 @@ export class BrowseService {
            ST_X(p.approx_location::geometry) AS approx_lng,
            ${distance} AS distance_metres,
            (SELECT count(*)::int FROM property_photos ph WHERE ph.property_id = p.id) AS photo_count,
-           cover.thumbnail_key AS cover_key, cover.width AS cover_width, cover.height AS cover_height
+           cover.thumbnail_key AS cover_key, cover.width AS cover_width, cover.height AS cover_height,
+           u.full_name
          FROM listings l
          JOIN properties p ON p.id = l.property_id
          JOIN users u ON u.id = p.lister_id
@@ -205,6 +227,133 @@ export class BrowseService {
                     : last.monthly_rent_birr,
             })
           : null,
+    };
+  }
+
+  /**
+   * GET /listings/:id (G6): what tenants see. Visible to everyone when it's public
+   * (PUBLIC_VISIBILITY, the same rule as browse); otherwise only to its lister, as a preview of the
+   * same view (decided 2026-11-24). Anyone else gets 404 LISTING_NOT_FOUND, as for a listing that
+   * doesn't exist, so a hidden listing's existence never shows.
+   */
+  async detail(id: string, viewerId?: string): Promise<ListingDetailDto> {
+    const [row] = await this.dataSource.query<
+      {
+        id: string;
+        status: ListingStatus;
+        property_id: string;
+        lister_id: string;
+        visible: boolean;
+        monthly_rent_birr: number | null;
+        advance_months: number | null;
+        negotiable: boolean | null;
+        available_from: string | null;
+        published_at: Date | null;
+        type: PropertyType | null;
+        bedrooms: number | null;
+        bathrooms: number | null;
+        furnished: boolean | null;
+        separate_water_meter: boolean | null;
+        separate_electricity_meter: boolean | null;
+        size_m2: number | null;
+        floor: number | null;
+        amenities: Amenity[];
+        description: string | null;
+        lister_relation: ListerRelation | null;
+        sub_city_id: string | null;
+        sub_city_name_en: string | null;
+        sub_city_name_am: string | null;
+        neighbourhood_id: string | null;
+        neighbourhood_name_en: string | null;
+        neighbourhood_name_am: string | null;
+        approx_lat: number | null;
+        approx_lng: number | null;
+        full_name: string | null;
+      }[]
+    >(
+      `SELECT l.id, l.status, l.property_id, p.lister_id,
+         (${PUBLIC_VISIBILITY.join(' AND ')}) AS visible,
+         l.monthly_rent_birr, l.advance_months, l.negotiable, l.available_from::text,
+         l.published_at, p.type, p.bedrooms, p.bathrooms, p.furnished,
+         p.separate_water_meter, p.separate_electricity_meter, p.size_m2, p.floor,
+         p.amenities::text[] AS amenities, p.description, p.lister_relation,
+         s.id AS sub_city_id, s.name_en AS sub_city_name_en, s.name_am AS sub_city_name_am,
+         n.id AS neighbourhood_id, n.name_en AS neighbourhood_name_en,
+         n.name_am AS neighbourhood_name_am,
+         ST_Y(p.approx_location::geometry) AS approx_lat,
+         ST_X(p.approx_location::geometry) AS approx_lng,
+         u.full_name
+       FROM listings l
+       JOIN properties p ON p.id = l.property_id
+       JOIN users u ON u.id = p.lister_id
+       LEFT JOIN neighbourhoods n ON n.id = p.neighbourhood_id
+       LEFT JOIN sub_cities s ON s.id = n.sub_city_id
+       WHERE l.id = $1`,
+      [id],
+    );
+    const viewerIsLister = !!row && row.lister_id === viewerId;
+    if (!row || (!row.visible && !viewerIsLister)) throw listingNotFound();
+
+    const photos = await this.dataSource.manager.find(PropertyPhoto, {
+      where: { propertyId: row.property_id },
+      order: { position: 'ASC' },
+    });
+    // Public when live (R7); the lister's preview of a listing that isn't uses signed links.
+    const live = row.status === ListingStatus.Live;
+    const urlOf = (key: string) =>
+      live
+        ? Promise.resolve(this.storage.publicUrl(key))
+        : this.storage.signedUrl(key);
+
+    return {
+      id: row.id,
+      status: row.status,
+      viewerIsLister,
+      monthlyRentBirr: row.monthly_rent_birr,
+      advanceMonths: row.advance_months,
+      negotiable: row.negotiable,
+      availableFrom: row.available_from,
+      publishedAt: row.published_at,
+      type: row.type,
+      bedrooms: row.bedrooms,
+      bathrooms: row.bathrooms,
+      furnished: row.furnished,
+      separateWaterMeter: row.separate_water_meter,
+      separateElectricityMeter: row.separate_electricity_meter,
+      sizeM2: row.size_m2,
+      floor: row.floor,
+      amenities: row.amenities,
+      description: row.description,
+      subCity: row.sub_city_id
+        ? {
+            id: row.sub_city_id,
+            nameEn: row.sub_city_name_en!,
+            nameAm: row.sub_city_name_am!,
+          }
+        : null,
+      neighbourhood: row.neighbourhood_id
+        ? {
+            id: row.neighbourhood_id,
+            nameEn: row.neighbourhood_name_en!,
+            nameAm: row.neighbourhood_name_am!,
+          }
+        : null,
+      approxLocation:
+        row.approx_lat === null || row.approx_lng === null
+          ? null
+          : { lat: row.approx_lat, lng: row.approx_lng },
+      listerRelation: row.lister_relation,
+      // Verified for everyone who can see it publicly; the lister's own preview says what's true.
+      lister: { publicName: publicName(row.full_name), verified: row.visible },
+      photos: await Promise.all(
+        photos.map(async (photo) => ({
+          id: photo.id,
+          position: photo.position,
+          width: photo.width,
+          height: photo.height,
+          url: await urlOf(photo.storageKey),
+        })),
+      ),
     };
   }
 
@@ -252,6 +401,8 @@ export class BrowseService {
       approxLocation: { lat: row.approx_lat, lng: row.approx_lng },
       distanceMetres: row.distance_metres,
       photoCount: row.photo_count,
+      // L7: only the public form of the name; every public lister is verified (PUBLIC_VISIBILITY).
+      lister: { publicName: publicName(row.full_name), verified: true },
       // Live: the photos are in the public bucket (R7), so a plain URL, not a signed link.
       cover: row.cover_key
         ? {

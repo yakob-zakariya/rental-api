@@ -523,6 +523,7 @@ Live listings, newest first by default, 20 at a time. All filters are optional a
       "approxLocation": { "lat": 9.0121, "lng": 38.7631 },
       "distanceMetres": 1200,
       "photoCount": 5,
+      "lister": { "publicName": "Yakob Z.", "verified": true },
       "cover": { "thumbnailUrl": "https://…-thumb.jpg", "width": 2048, "height": 1536 }
     }
   ],
@@ -544,9 +545,31 @@ Live listings, newest first by default, 20 at a time. All filters are optional a
   cache. `width`/`height` are the full photo's; the thumbnail has the same proportions. The full
   photos come with the listing's detail (next task).
 - `availableFrom` in the past means available now. `bathrooms: 0` is a shared bathroom.
+- **`lister`**: `{ "publicName": "Yakob Z.", "verified": true }`. Show the name with a verified
+  badge; it's the first name and the initial of the father's name, never the full name.
 - Errors (400): `RENT_RANGE_INVALID` (min above max), `LOCATION_INCOMPLETE` (lat without lng, or a
   radius without a point), `RADIUS_TOO_LARGE` (with `max`), `DISTANCE_SORT_NEEDS_LOCATION`,
   `INVALID_CURSOR`, `VALIDATION_FAILED`.
+
+### `GET /listings/:id`
+
+One listing as tenants see it. No account needed; **send the user's token if they're signed in**
+(an invalid or expired token is ignored, never a 401 here): that's how a lister gets a preview of
+their own listing, and later how the screen knows the viewer's contact request.
+
+→ `200`: the card's fields plus `description`, `separateWaterMeter`, `separateElectricityMeter`,
+`listerRelation` (`owner` / `representative`), `status`, `viewerIsLister`, and **`photos`**: every
+photo at full size (`{ id, position, width, height, url }`, in order). For a live listing the URLs
+are public and cacheable.
+
+- **Not public** (not live, or the lister is banned or no longer verified): `404
+  LISTING_NOT_FOUND`, the same as a listing that doesn't exist: show "This listing is no longer
+  available".
+- **The lister's preview:** signed in as the lister, any state is returned (`viewerIsLister:
+  true`, `status` as it is), in the same public view: no landmark or exact point. Photos of a
+  listing that isn't live are 15-minute signed links; don't cache them. Use it for a "See it as
+  tenants will" button; `GET /me/listings` remains the lister's full view.
+- Draw `approxLocation` as a ~500 m circle, as in browse.
 
 ## Health
 

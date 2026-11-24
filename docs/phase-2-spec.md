@@ -291,7 +291,10 @@ Any other transition: 409 `INVALID_LISTING_STATE`. **Active** means `pending_rev
 - **L7** The listing shows the lister's first name, the initial of their father's name and a
   verified badge (for example "Abebe K."), taken from the verified `full_name` (first word, and
   the first letter of the second word; one word only → that word). The full name is never
-  public.
+  public. A word written all in capitals or all in small letters (passports) is shown with only
+  its first letter capital; mixed case is kept; Ge'ez passes through (T5.2). Checked 2026-11-24
+  on the user's Fayda ID card: "Yakob Zekariya Aman" (given, father's, grandfather's name) →
+  "Yakob Z."; passports are checked in the live Didit test.
 - **L8** Banning a user (S5) moves their `pending_review`, `live` and `stale` listings to
   `expired` in the same transaction (`listing_history` actor: the admin). Drafts stay drafts.
   Unban doesn't change listings, so they come back as `expired` and the lister must reopen them
@@ -420,10 +423,19 @@ Any other transition: 409 `INVALID_LISTING_STATE`. **Active** means `pending_rev
   approximate point as a circle of about 500 m, never a pin (decided 2026-11-24): the home can be
   up to 400 m away.
 - **G6** `GET /listings/:id` (public): a listing that isn't `live` (or whose lister isn't
-  `active`) is 404 for everyone except its lister. Shown: listing and property fields except the
-  landmark and the unlisted neighbourhood name, photos, sub-city and neighbourhood (the picked
-  one), the approximate point, the lister's name with the verified badge (L7) and
-  `lister_relation`.
+  `active`, or no longer verified) is 404 `LISTING_NOT_FOUND` for everyone except its lister.
+  Shown: listing and property fields except the landmark and the unlisted neighbourhood name,
+  photos (full size; browse cards have thumbnails), sub-city and neighbourhood (the picked one),
+  the approximate point, the lister's name with the verified badge (L7) and `lister_relation`.
+  - **Who sees it (decided 2026-11-24):** public browse and detail show only `live` listings of
+    listers who are `active` **and** whose verification is `approved`. A lister whose
+    verification is revoked is hidden at once, like a banned one; T7.1 also expires their open
+    listings (photos unpublished, weekly checks stop), and reopening re-checks verification.
+  - **Optional sign-in on public routes (T5.2):** a valid app token identifies the viewer; a
+    missing, invalid or expired one leaves the request anonymous (a public route never answers
+    401). The lister, signed in, sees their own listing in any state in this same public view (a
+    preview; photos as signed links while it isn't live), with `viewerIsLister: true`. Phase 3
+    uses the same to show the viewer's contact request state.
 - **G7** `GET /areas` (public): sub-cities with their **active** neighbourhoods, both languages.
   `POST /admin/neighbourhoods { subCityId, nameEn, nameAm, propertyId? }` (moderator+, audited)
   adds one; a name already in that sub-city (active or not) is 409 `NEIGHBOURHOOD_EXISTS`. With
@@ -650,6 +662,10 @@ the local SeaweedFS (its own test buckets) or a fake `PhotoStorage`; tests never
 - **Service area (2026-11-10):** strict, no margin outside the OpenStreetMap boundary. A refused
   pin gets a friendly message in the app and is recorded rounded to about 1 km, with no user
   link. → G1
+- **Detail and names (2026-11-24):** the optional sign-in on public routes, for the lister's
+  preview (and Phase 3); public views require an active **and** verified lister, and a revoked
+  verification expires the lister's open listings like a ban (T7.1); passport name order is
+  handled after the live Didit test. → G6, L7, L8
 - **Review decisions (2026-11-24):** re-approval keeps `published_at` and restarts the freshness
   clock; no lister note with `GUIDELINES`; CDN purge on takedown through `PublicCache`
   (Cloudflare when production is chosen); an hourly job removes public photos of listings that

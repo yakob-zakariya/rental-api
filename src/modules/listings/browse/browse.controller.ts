@@ -1,10 +1,14 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { Public } from '../../../common/decorators/public.decorator.js';
-import { BrowsePageDto, BrowseQuery } from './browse.dto.js';
+import { ViewerId } from '../../../common/decorators/viewer.decorator.js';
+import { listingNotFound } from '../listing-state.js';
+import { BrowsePageDto, BrowseQuery, ListingDetailDto } from './browse.dto.js';
 import { BrowseService } from './browse.service.js';
 
-/** Public browse (spec G5): no account needed. */
+const listingId = new ParseUUIDPipe({ exceptionFactory: listingNotFound });
+
+/** Public browse and detail (spec G5, G6): no account needed; a signed-in viewer is recognised. */
 @ApiTags('browse')
 @Public()
 @Controller('listings')
@@ -19,5 +23,18 @@ export class BrowseController {
   @ApiOkResponse({ type: BrowsePageDto })
   list(@Query() query: BrowseQuery): Promise<BrowsePageDto> {
     return this.browse.browse(query);
+  }
+
+  /**
+   * One listing as tenants see it (G6). A listing that isn't public is 404 LISTING_NOT_FOUND,
+   * except to its signed-in lister, who gets the same view as a preview.
+   */
+  @Get(':id')
+  @ApiOkResponse({ type: ListingDetailDto })
+  detail(
+    @Param('id', listingId) id: string,
+    @ViewerId() viewerId: string | undefined,
+  ): Promise<ListingDetailDto> {
+    return this.browse.detail(id, viewerId);
   }
 }

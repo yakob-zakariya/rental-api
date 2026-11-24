@@ -114,10 +114,12 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
       G5); tests, including that results and distances come only from `approx_location`. Done
       2026-11-24, with `maxAdvanceMonths`, both rent sorts, thumbnails on cards, a 5 km default
       radius.
-- [ ] **T5.2 Detail and the lister's name.** `GET /listings/:id` (G3, G6) and the public name
+- [x] **T5.2 Detail and the lister's name.** `GET /listings/:id` (G3, G6) and the public name
       (L7). First check, on your own approved account, the word order and letter case of
       `users.full_name` as Didit returned it (so "first name + father's initial" picks the right
-      words); tests.
+      words); tests. Done 2026-11-24: "Yakob Zekariya Aman" → "Yakob Z."; capitals handled;
+      optional sign-in on public routes for the lister's preview; public views hide unverified
+      listers.
 
 ## Step 6 — Push and freshness
 
@@ -146,7 +148,10 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
       unban leaves listings expired (L8, N2); browse hides non-active listers; tests. The T2.4
       test "live → edit → pending_review → ban → unban → reopen" expires the listing with SQL
       for now: drop that line once the ban does it. The ban unpublishes the photos of the listings
-      it expires (`PublicPhotos`, R7).
+      it expires (`PublicPhotos`, R7). **A revoked verification does the same** (decided
+      2026-11-24): when a lister's verification stops being `approved`, their open listings move
+      to `expired` (photos unpublished, weekly checks stop); verifying again and reopening brings
+      them back (reopen re-checks verification). Browse and detail already hide them (T5.2).
 
 ## Step 8 — Flutter app (repo: `rental-app`)
 

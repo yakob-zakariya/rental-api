@@ -14,7 +14,12 @@ import {
 } from 'class-validator';
 import { AreaRefDto, LatLngDto } from '../dto/listing.dto.js';
 import { LISTING_LIMITS } from '../listing-limits.js';
-import { Amenity, PropertyType } from '../listings.enums.js';
+import {
+  Amenity,
+  ListerRelation,
+  ListingStatus,
+  PropertyType,
+} from '../listings.enums.js';
 import { BROWSE_SORTS, type BrowseSort } from './browse-cursor.js';
 
 export const DEFAULT_BROWSE_PAGE = 20;
@@ -147,6 +152,21 @@ export class BrowseQuery {
   after?: string;
 }
 
+export class PublicListerDto {
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: 'Yakob Z.',
+    description:
+      "First name and the initial of the father's name (L7); never the full name",
+  })
+  publicName: string | null;
+  @ApiProperty({
+    description: 'The verified badge: always true for what the public sees',
+  })
+  verified: boolean;
+}
+
 export class CoverPhotoDto {
   @ApiProperty({
     description:
@@ -195,6 +215,7 @@ export class BrowseCardDto {
   })
   distanceMetres: number | null;
   @ApiProperty() photoCount: number;
+  @ApiProperty({ type: PublicListerDto }) lister: PublicListerDto;
   @ApiProperty({
     type: CoverPhotoDto,
     nullable: true,
@@ -207,4 +228,72 @@ export class BrowseCardDto {
 export class BrowsePageDto {
   @ApiProperty({ type: [BrowseCardDto] }) items: BrowseCardDto[];
   @ApiProperty({ type: String, nullable: true }) nextCursor: string | null;
+}
+
+export class DetailPhotoDto {
+  @ApiProperty({ format: 'uuid' }) id: string;
+  @ApiProperty({ description: '0 is the cover' }) position: number;
+  @ApiProperty() width: number;
+  @ApiProperty() height: number;
+  @ApiProperty({
+    description:
+      "The full photo (2048 px at most): a public URL when live; a 15-minute signed link in the lister's own preview",
+  })
+  url: string;
+}
+
+/**
+ * GET /listings/:id (G6): what tenants see. Never the exact point, the landmark, the typed
+ * neighbourhood name, the full name or the phone. Fields can be null only in a lister's preview
+ * of an unfinished draft.
+ */
+export class ListingDetailDto {
+  @ApiProperty({ format: 'uuid' }) id: string;
+  @ApiProperty({
+    enum: ListingStatus,
+    description: "live for everyone; any state in the lister's own preview",
+  })
+  status: ListingStatus;
+  @ApiProperty({
+    description:
+      'True when the signed-in viewer is the lister (a preview of how tenants see it)',
+  })
+  viewerIsLister: boolean;
+  @ApiProperty({ type: Number, nullable: true }) monthlyRentBirr: number | null;
+  @ApiProperty({ type: Number, nullable: true }) advanceMonths: number | null;
+  @ApiProperty({ type: Boolean, nullable: true }) negotiable: boolean | null;
+  @ApiProperty({ type: String, nullable: true, format: 'date' })
+  availableFrom: string | null;
+  @ApiProperty({ type: Date, nullable: true }) publishedAt: Date | null;
+  @ApiProperty({ enum: PropertyType, nullable: true })
+  type: PropertyType | null;
+  @ApiProperty({ type: Number, nullable: true }) bedrooms: number | null;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: '0 = shared bathroom',
+  })
+  bathrooms: number | null;
+  @ApiProperty({ type: Boolean, nullable: true }) furnished: boolean | null;
+  @ApiProperty({ type: Boolean, nullable: true })
+  separateWaterMeter: boolean | null;
+  @ApiProperty({ type: Boolean, nullable: true })
+  separateElectricityMeter: boolean | null;
+  @ApiProperty({ type: Number, nullable: true }) sizeM2: number | null;
+  @ApiProperty({ type: Number, nullable: true }) floor: number | null;
+  @ApiProperty({ enum: Amenity, isArray: true }) amenities: Amenity[];
+  @ApiProperty({ type: String, nullable: true }) description: string | null;
+  @ApiProperty({ type: AreaRefDto, nullable: true }) subCity: AreaRefDto | null;
+  @ApiProperty({ type: AreaRefDto, nullable: true })
+  neighbourhood: AreaRefDto | null;
+  @ApiProperty({
+    type: LatLngDto,
+    nullable: true,
+    description: 'Draw a circle of about 500 m, never a pin',
+  })
+  approxLocation: LatLngDto | null;
+  @ApiProperty({ enum: ListerRelation, nullable: true })
+  listerRelation: ListerRelation | null;
+  @ApiProperty({ type: PublicListerDto }) lister: PublicListerDto;
+  @ApiProperty({ type: [DetailPhotoDto] }) photos: DetailPhotoDto[];
 }

@@ -372,7 +372,7 @@ describe('listings: public browse (e2e, T5.1)', () => {
   });
 
   describe('privacy (G3, G4)', () => {
-    it('cards never show the exact point, the landmark, the typed neighbourhood or the lister', async () => {
+    it("cards never show the exact point, the landmark, the typed neighbourhood or the lister's full name", async () => {
       const who = await lister();
       await listing(who, {
         approx: north(1),
@@ -385,7 +385,10 @@ describe('listings: public browse (e2e, T5.1)', () => {
       expect(text).not.toContain(String(exact.lat).slice(0, 7));
       expect(text).not.toContain('Blue gate behind the pharmacy');
       expect(text).not.toContain('Gerji Mebrat Hail');
-      expect(text).not.toContain('Abebe');
+      // Only the public form of the name (L7, T5.2): "Abebe K.", never the rest.
+      expect(text).toContain('"publicName":"Abebe K."');
+      expect(text).not.toContain('Kebede');
+      expect(text).not.toContain('Tesfaye');
       expect(text).not.toContain(who.userId);
     });
   });

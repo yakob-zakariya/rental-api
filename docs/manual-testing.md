@@ -322,6 +322,10 @@ Approve a listing first (see Listing review). Then, with no token at all:
 | `?lat=9.01&lng=38.76&radiusKm=25` | 400 `RADIUS_TOO_LARGE`, `max: 20` |
 | A listing in review, a draft, or one of a banned lister | not in the results |
 | Search the response for the listing's landmark or its exact `location` | not there |
+| `GET /listings/<id>` (no token) of a live listing | the detail: description, full photos (open without a token), `lister.publicName` like "Yakob Z." with `verified: true`, no landmark or exact point |
+| The same for a listing in review, a draft, or a banned / unverified lister's | 404 `LISTING_NOT_FOUND` |
+| `GET /listings/<id>` of your own draft **with your app token** | 200, `viewerIsLister: true`, `status: draft`; photos as signed links |
+| The same with someone else's token, or `Authorization: Bearer junk` | 404 for the draft (never 401); a live listing still opens |
 
 ## Worth trying on purpose
 

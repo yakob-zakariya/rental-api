@@ -2394,7 +2394,7 @@
     },
     {
       "name": "9. Browse",
-      "description": "Public browse (T5.1): no token needed.",
+      "description": "Public browse and detail (T5.1, T5.2): no token needed; with the app token, a lister sees their own listing as a preview.",
       "item": [
         {
           "name": "Browse (newest)",
@@ -2416,7 +2416,7 @@
                 }
               ]
             },
-            "description": "No token. Live listings, newest first. Saves `browseCursor` for **Next page**.",
+            "description": "No token. Live listings, newest first. Saves `browseCursor` for **Next page**. Also saves the first card's id as `browseListingId`.",
             "auth": {
               "type": "noauth"
             }
@@ -2429,7 +2429,8 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "pm.environment.set('browseCursor', pm.response.json().nextCursor || '');"
+                  "pm.environment.set('browseCursor', pm.response.json().nextCursor || '');",
+                  "const first = pm.response.json().items[0]; if (first) pm.environment.set('browseListingId', first.id);"
                 ]
               }
             }
@@ -2574,6 +2575,79 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listing detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/listings/{{browseListingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "listings",
+                "{{browseListingId}}"
+              ]
+            },
+            "description": "No token. The listing as tenants see it: description, full photos (public URLs), `lister.publicName` with the badge. Not public: 404 `LISTING_NOT_FOUND`.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Preview my listing (as tenants see it)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/listings/{{listingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "listings",
+                "{{listingId}}"
+              ]
+            },
+            "description": "With the app token: your own listing in any state (`viewerIsLister: true`), in the public view. Anyone else gets 404 for a listing that isn't live.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('a known answer', () => pm.expect([200, 404]).to.include(pm.response.code));"
                 ]
               }
             }
