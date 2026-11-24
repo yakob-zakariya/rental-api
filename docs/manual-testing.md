@@ -207,6 +207,14 @@ Submit a listing first (app token, 3 photos), then with the admin token:
 | As support, any decision | 403 `INSUFFICIENT_ROLE` |
 | `GET /admin/actions` | `listing.approve` / `listing.reject` / `listing.takedown` rows with the notes |
 
+**Public photo clean-up (T4.4).** Runs hourly when `JOBS_ENABLED=true`, or now with
+`npm run photos:reconcile` (prints a summary: checked, kept, removed, recent, foreign, errors).
+To see it remove something: approve a listing (its photos open at their public URLs), then
+bypass the normal unpublish in psql: `UPDATE listings SET status = 'expired', expired_at = now()
+WHERE id = '<id>';`. **Wait 15 minutes** (copies younger than that are skipped on purpose), run the
+command: `removed: 3`, the public URLs answer 404, and the log names each removed key. A file you
+put in the public bucket outside `properties/` is counted as `foreign` and left alone.
+
 ## Listings: drafts (app token)
 
 Signed in with the app token (verification isn't needed to draft, L1). A draft may be

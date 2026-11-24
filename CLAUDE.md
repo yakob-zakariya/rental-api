@@ -86,6 +86,7 @@ npm run migration:revert
 npm run migration:show
 npm run admin:create -- --email <email> [--role super_admin]   # staff account; password prompted (or ADMIN_PASSWORD)
 npm run didit:inspect -- <attempt id | session id> | --latest   # shape of a Didit decision, no personal data
+npm run photos:reconcile   # one public-photo cleanup pass now (the hourly job): removes public copies of photos whose listing isn't live
 npm run dev:reset-verifications   # DEV ONLY: wipe all verification data, users → not_verified (asks to confirm)
 ```
 

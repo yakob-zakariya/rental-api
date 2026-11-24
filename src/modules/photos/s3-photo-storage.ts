@@ -3,12 +3,17 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   type S3Client,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { EnvironmentVariables } from '../../config/env.validation.js';
-import { assertStorageKey, PhotoStorage } from './photo-storage.js';
+import {
+  assertStorageKey,
+  PhotoStorage,
+  type PublicObject,
+} from './photo-storage.js';
 
 export type PhotoStorageSettings = Pick<
   EnvironmentVariables,
@@ -109,5 +114,26 @@ export class S3PhotoStorage extends PhotoStorage {
   publicUrl(key: string): string {
     assertStorageKey(key);
     return `${this.publicBase}/${key}`;
+  }
+
+  async *listPublic(prefix = ''): AsyncIterable<PublicObject[]> {
+    let token: string | undefined;
+    do {
+      const page = await this.s3.send(
+        new ListObjectsV2Command({
+          Bucket: this.settings.S3_PUBLIC_BUCKET,
+          Prefix: prefix || undefined,
+          ContinuationToken: token,
+          MaxKeys: 1000,
+        }),
+      );
+      const objects = (page.Contents ?? []).flatMap((o) =>
+        o.Key && o.LastModified
+          ? [{ key: o.Key, lastModified: o.LastModified }]
+          : [],
+      );
+      if (objects.length > 0) yield objects;
+      token = page.IsTruncated ? page.NextContinuationToken : undefined;
+    } while (token);
   }
 }

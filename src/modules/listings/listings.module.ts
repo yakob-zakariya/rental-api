@@ -19,6 +19,8 @@ import {
   PropertyPhotosController,
 } from './property-photos.controller.js';
 import { PropertyPhotosService } from './property-photos.service.js';
+import { PublicPhotoReconciliationJob } from './public-photo-reconciliation.job.js';
+import { PublicPhotoReconciliation } from './public-photo-reconciliation.service.js';
 import { PublicPhotos } from './public-photos.js';
 
 /** Properties, listings, their history and their photos (spec sections 3 and 4). */
@@ -54,6 +56,8 @@ import { PublicPhotos } from './public-photos.js';
     ListingsAdminService,
     PropertyPhotosService,
     PublicPhotos,
+    PublicPhotoReconciliation,
+    PublicPhotoReconciliationJob,
     PhotoUploadErrorFilter,
     { provide: PhotoCounter, useClass: DbPhotoCounter },
   ],

@@ -525,7 +525,18 @@ Any other transition: 409 `INVALID_LISTING_STATE`. **Active** means `pending_rev
   move out of `live` (back to review, close, takedown; later stale, expiry, ban) unpublishes them
   after the commit, best effort. A takedown also purges them from the CDN (`PublicCache`; a
   do-nothing one until production is chosen). Anything a failed step leaves public is removed by
-  an hourly reconciliation job (T4.4).
+  an hourly reconciliation job (T4.4; also `npm run photos:reconcile`):
+  - it lists the public bucket and removes every copy under `properties/` whose photo record is
+    gone or whose listing isn't `live`, logs each removal with the reason, and asks the CDN to
+    forget the removed URLs;
+  - copies written in the last 15 minutes are left alone (an approval publishes a moment before
+    it commits); keys outside `properties/` are logged, never deleted; the private bucket is never
+    touched; one instance runs a pass at a time (advisory lock);
+  - **no overlap with publishing** (decided 2026-11-24): for each property with suspicious
+    copies, the job locks the property row (the lock every publishing path already holds),
+    checks again, deletes, and commits. An approval or reopen of that listing waits for the job
+    and publishes after the delete; or the job waits for it and then finds the listing live and
+    keeps the copies.
 
 ### Review web page
 One static HTML page served by the API at `/admin/review`, using the existing admin login and the

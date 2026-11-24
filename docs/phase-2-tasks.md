@@ -88,13 +88,15 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
       (`PhotoStorage.publish`); a takedown unpublishes them and purges the CDN cache for them
       (P5: cached copies otherwise live on for up to a day). Every other move out of `live`
       unpublishes too. Done 2026-11-24 (R7: `PublicPhotos`, `PublicCache` do-nothing for now).
-- [ ] **T4.4 Public photo reconciliation** (added 2026-11-24). An hourly job (`@nestjs/schedule`,
+- [x] **T4.4 Public photo reconciliation** (added 2026-11-24). An hourly job (`@nestjs/schedule`,
       like the verification polling job, behind `JOBS_ENABLED`): list the public bucket and remove
       every photo whose listing isn't `live` (or whose photo row is gone), and log what it
       removed. Covers a best-effort unpublish that failed after a takedown (the URLs were seen,
       so they aren't unguessable) and a publish whose approval transaction then failed. Needs a
       "list public keys" operation on `PhotoStorage`. Tests: run the job with stray public copies
-      of each kind; run it twice.
+      of each kind; run it twice. Done 2026-11-24: per-property row lock against publishing (both
+      orders tested, and shown to fail without the lock), 15-minute grace, `properties/` only,
+      `npm run photos:reconcile`.
 - [ ] **T4.3 Review web page.** The static page at `/admin/review`, including "add
       neighbourhood" for an unlisted one, with `propertyId` on `POST /admin/neighbourhoods`
       moving that property to the new neighbourhood and clearing its typed name (G7); checked by

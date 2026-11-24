@@ -10,6 +10,13 @@
  * Keys are chosen by the caller (T3.2) and must match STORAGE_KEY: they appear in public URLs, so
  * they never carry personal data.
  */
+/** A copy in the public bucket, as listed by listPublic(). */
+export interface PublicObject {
+  key: string;
+  /** When the copy was written (by the storage server's clock). */
+  lastModified: Date;
+}
+
 export abstract class PhotoStorage {
   /** Stores a photo (already re-encoded, P2) in the private bucket. Overwrites the same key. */
   abstract putPrivate(
@@ -38,6 +45,13 @@ export abstract class PhotoStorage {
 
   /** The public URL of a published photo (S3_PUBLIC_BASE_URL + key). */
   abstract publicUrl(key: string): string;
+
+  /**
+   * Everything in the public bucket under `prefix`, a page (up to 1000) at a time, for the
+   * reconciliation job (T4.4). Keys aren't checked against STORAGE_KEY: the job must see
+   * whatever is there.
+   */
+  abstract listPublic(prefix?: string): AsyncIterable<PublicObject[]>;
 }
 
 /** Lowercase letters, digits, and . _ - / between them; no "..", no leading or trailing slash. */
