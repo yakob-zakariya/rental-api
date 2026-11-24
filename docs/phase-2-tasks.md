@@ -138,10 +138,11 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
 - [ ] **T6.2-iOS (later).** iOS push: needs an Apple developer account, an APNs key uploaded to
       Firebase, the iOS app added in Firebase, and `FirebaseMessagingInstallationIdEnabled` in the
       app's Info.plist. The server side should need no change beyond checking it on an iPhone.
-- [ ] **T6.3 Freshness job.** F1–F6: checks, the answer endpoint with closing reasons, stale,
+- [x] **T6.3 Freshness job.** F1–F6: checks, the answer endpoint with closing reasons, stale,
       restore, expiry; tests with the clock moved and the job run twice. Live → stale and stale or
       expired → anything unpublish the photos, and restore → live publishes them, through
-      `PublicPhotos` (R7).
+      `PublicPhotos` (R7). Done 2026-11-24, with the stale notice and quiet hours (F7) added;
+      `npm run listings:freshness` runs a pass.
 - [ ] **T6.4 Review notices.** Push on approve, reject and takedown, with the reason code (N5);
       tests. A takedown's push carries its reason code, the neutral `GUIDELINES` for suspected
       fraud, and the lister note if any (never with `GUIDELINES`), never the staff note.

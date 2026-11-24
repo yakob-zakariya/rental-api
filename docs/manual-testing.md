@@ -307,6 +307,22 @@ what was recorded.
 | Relist while the property has a draft, live, in-review, expired or rejected listing | 409 `PROPERTY_HAS_OPEN_LISTING` with that `listingId` |
 | Relist someone else's property | 404 `PROPERTY_NOT_FOUND` |
 
+**The weekly check (F1–F6).** Nothing waits a week: move the clock in psql, then run one pass with
+`npm run listings:freshness` (it prints what it did; between 20:00 and 08:00 Addis Ababa it
+makes no checks and sends no notices: `quiet: true`).
+
+| Try | Expect |
+| --- | --- |
+| Live listing: `UPDATE listings SET published_at = now() - interval '8 days', last_confirmed_at = now() - interval '8 days' WHERE id = '<id>';` then a pass | `checks: 1`; a `[Push] … Is your home still for rent?` log line; `GET /me/listings` shows `pendingCheck` |
+| The pass again | `checks: 0` (one open check per listing) |
+| `POST /listings/<id>/still-available { "available": true }` | 200, `pendingCheck: null` |
+| Again with a check: `UPDATE availability_checks SET sent_at = now() - interval '49 hours' WHERE listing_id = '<id>';` then a pass | `stale: 1`, `staleNotices: 1`; the listing is gone from `GET /listings`; a "Your listing is hidden" log line |
+| `POST /listings/<id>/restore` | 200 `live`, back in `GET /listings` |
+| `{ "available": false }` (no reason) | 400 `VALIDATION_FAILED` |
+| `{ "available": false, "reason": "rented_elsewhere" }` | 200 `rented` |
+| Stale for 30 days: `UPDATE listings SET stale_at = now() - interval '30 days' WHERE id = '<id>';` then a pass | `expired: 1`; no push |
+| `SELECT outcome, push_result, stale_push_result FROM availability_checks WHERE listing_id = '<id>';` | each check's outcome (`available`, `not_available`, `no_answer`, `cancelled`) |
+
 ## Push devices (app token)
 
 `PUSH_PROVIDER=console`: pushes are only logged in the API's terminal (`[Push] To …abc123: …`).

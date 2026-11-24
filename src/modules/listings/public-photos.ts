@@ -12,8 +12,9 @@ import { PublicCache } from '../photos/public-cache.js';
  * A listing's photos are public only while it is live (P5, G5). Every move into live publishes
  * them inside its transaction, so a listing never goes live without its photos; every move out
  * of live unpublishes them after the commit. Moves into live so far: approve (T4.2), reopen
- * (T2.4); restore from stale comes with T6.3. Moves out: back to review after an edit or a photo
- * change, close, takedown; stale, expiry and ban come with T6.3 and T7.1. Anything a failed or
+ * (T2.4), restore from stale (T6.3). Moves out: back to review after an edit or a photo change,
+ * close, takedown, stale (T6.3; expiry starts from stale, already private); the ban comes with
+ * T7.1. Anything a failed or
  * half-done step leaves public is removed by the reconciliation job (T4.4).
  */
 @Injectable()

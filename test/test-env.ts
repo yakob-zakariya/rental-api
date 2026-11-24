@@ -58,4 +58,9 @@ export const TEST_ENV = {
 
   SEARCH_MAX_RADIUS_KM: '20',
   PUSH_PROVIDER: 'console',
+  LISTING_CHECK_INTERVAL: '7d',
+  LISTING_CHECK_ANSWER_WINDOW: '48h',
+  LISTING_STALE_TO_EXPIRED: '30d',
+  PUSH_QUIET_START: '20:00',
+  PUSH_QUIET_END: '08:00',
 } as const satisfies Record<string, string>;

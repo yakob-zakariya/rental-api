@@ -1,4 +1,6 @@
 import { plainToInstance, Transform } from 'class-transformer';
+import { CLOCK_TIME_PATTERN } from '../common/dates.js';
+import { durationToSeconds } from '../common/duration.js';
 import {
   IsBoolean,
   IsDefined,
@@ -320,6 +322,19 @@ export class EnvironmentVariables {
   @IsInt({ message: '$property must be an integer' })
   SEARCH_MAX_RADIUS_KM: number = 20;
 
+  // --- Freshness (spec F1–F6; T6.3) ---
+  /** F1: a live listing is asked "still available?" this long after publishing or confirming. */
+  @Matches(DURATION_PATTERN, duration)
+  LISTING_CHECK_INTERVAL: string = '7d';
+
+  /** F3: no answer this long after the check was sent → stale. */
+  @Matches(DURATION_PATTERN, duration)
+  LISTING_CHECK_ANSWER_WINDOW: string = '48h';
+
+  /** F5: stale this long → expired. */
+  @Matches(DURATION_PATTERN, duration)
+  LISTING_STALE_TO_EXPIRED: string = '30d';
+
   // --- Push (spec N1; T6.1) ---
   @IsEnum(PushProvider, { message: '$property must be one of console, fcm' })
   PUSH_PROVIDER: PushProvider = PushProvider.Console;
@@ -331,6 +346,20 @@ export class EnvironmentVariables {
   @IsOptional()
   @IsString()
   FCM_SERVICE_ACCOUNT_FILE?: string;
+
+  /**
+   * Quiet hours, Africa/Addis_Ababa, 'HH:MM' (decided 2026-11-24): weekly checks and stale
+   * notices wait until PUSH_QUIET_END. From START (included) to END (excluded); equal = none.
+   */
+  @Matches(CLOCK_TIME_PATTERN, {
+    message: '$property must be a time like 20:00',
+  })
+  PUSH_QUIET_START: string = '20:00';
+
+  @Matches(CLOCK_TIME_PATTERN, {
+    message: '$property must be a time like 08:00',
+  })
+  PUSH_QUIET_END: string = '08:00';
 }
 
 // Variables whose .env.example value is a placeholder that production must replace.
@@ -384,6 +413,18 @@ export function validateEnv(
   // P5: public and private photos must never share a bucket.
   if (env.S3_PRIVATE_BUCKET && env.S3_PRIVATE_BUCKET === env.S3_PUBLIC_BUCKET) {
     problems.push('S3_PUBLIC_BUCKET must differ from S3_PRIVATE_BUCKET');
+  }
+
+  // F3: a check must be answerable before the next one is due.
+  if (
+    DURATION_PATTERN.test(env.LISTING_CHECK_INTERVAL) &&
+    DURATION_PATTERN.test(env.LISTING_CHECK_ANSWER_WINDOW) &&
+    durationToSeconds(env.LISTING_CHECK_ANSWER_WINDOW) >=
+      durationToSeconds(env.LISTING_CHECK_INTERVAL)
+  ) {
+    problems.push(
+      'LISTING_CHECK_ANSWER_WINDOW must be shorter than LISTING_CHECK_INTERVAL',
+    );
   }
 
   if (

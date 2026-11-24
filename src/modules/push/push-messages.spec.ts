@@ -12,6 +12,7 @@ const ref = {
 const NOTICES: PushNotice[] = [
   { kind: 'weekly_check', ...ref },
   { kind: 'listing_approved', ...ref },
+  { kind: 'listing_stale', ...ref },
   {
     kind: 'listing_rejected',
     reasonCode: StaffReasonCode.PhotosUnclear,
@@ -94,6 +95,21 @@ describe('push texts (N3, N4)', () => {
     );
   });
 
+  it('the stale notice, as asked (2026-11-24)', () => {
+    expect(pushMessage(NOTICES[2], UserLanguage.English)).toEqual({
+      title: 'Your listing is hidden',
+      body: "Your apartment in Bole is hidden because it wasn't confirmed. Tap to show it again.",
+      data: { type: 'listing_stale', listingId: ref.listingId },
+    });
+  });
+
+  it('the Amharic stale notice as reviewed (2026-11-24)', () => {
+    expect(pushMessage(NOTICES[2], UserLanguage.Amharic)).toMatchObject({
+      title: 'ማስታወቂያዎ ተደብቋል',
+      body: 'በቦሌ የሚገኘው የአፓርታማ ማስታወቂያዎ አሁንም ለኪራይ ክፍት መሆኑን ስላላረጋገጡ ለተከራዮች አይታይም። እንደገና እንዲታይ ይንኩ።',
+    });
+  });
+
   it('the Amharic wording as reviewed (2026-11-24)', () => {
     expect(pushMessage(NOTICES[0], UserLanguage.Amharic).body).toBe(
       'በቦሌ የሚገኘው አፓርታማዎ አሁንም ለኪራይ ክፍት መሆኑን ያረጋግጡ፤ ከተከራየ ማስታወቂያውን ይዝጉ።',
@@ -104,7 +120,7 @@ describe('push texts (N3, N4)', () => {
         UserLanguage.Amharic,
       ).body,
     ).toContain('ሰርቪስ ክፍልዎ');
-    const takenDown = pushMessage(NOTICES[3], UserLanguage.Amharic);
+    const takenDown = pushMessage(NOTICES[4], UserLanguage.Amharic);
     expect(takenDown.title).toBe('ማስታወቂያዎ ተወግዷል');
     expect(takenDown.body).toBe(
       'መመሪያዎቻችንን አላሟላም፤ በቦሌ የሚገኘው የአፓርታማ ማስታወቂያዎ ከአሁን በኋላ ለተከራዮች አይታይም።',

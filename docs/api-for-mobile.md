@@ -373,6 +373,33 @@ never approved. Show which before they confirm: `needsReview: true` → "It will
 before it's live". The same checks as submit (`VERIFICATION_REQUIRED`, `NOT_ENOUGH_PHOTOS`,
 `ACTIVE_LISTING_LIMIT`…); not expired: `409 INVALID_LISTING_STATE`.
 
+### The weekly check: `pendingCheck`, `still-available`, `restore`
+
+Every 7 days a `live` listing is asked "Is your home still for rent?" (a `weekly_check` push, sent
+only between 08:00 and 20:00). The listing in `GET /me/listings` then has
+`pendingCheck: { "sentAt": "…", "answerBy": "…" }` (otherwise `null`): **show the question on the
+listing even if the push never arrived**, with the time left until `answerBy`. Without an answer
+by then the listing becomes `stale`: hidden from tenants until restored, and a `listing_stale`
+push says so ("Your apartment in Bole is hidden because it wasn't confirmed. Tap to show it
+again."). After 30 days stale it becomes `expired` (reopen it, above).
+
+**`POST /listings/:id/still-available`**, body `{ "available": true }` or
+`{ "available": false, "reason": "rented_in_app" | "rented_elsewhere" | "no_longer_for_rent" }`.
+→ `200` with the listing.
+
+- `available: true`: confirmed; the next check comes 7 days later. Fine without a pending check
+  too (a "Still available" button can always be shown on a live listing). On a `stale` listing it
+  restores it (a late tap on the push works).
+- `available: false`: closes it, as `close` below (ask the reason the same way).
+- `reason` with `true`, or no `reason` with `false`: `400 VALIDATION_FAILED`. Any state other than
+  `live` or `stale`: `409 INVALID_LISTING_STATE`.
+
+**`POST /listings/:id/restore`**, no body: `stale` → `live` at once, no review ("Show it again").
+→ `200`. Not stale: `409 INVALID_LISTING_STATE`. `503 STORAGE_UNAVAILABLE`: try again.
+
+**Pushes:** `weekly_check` opens the listing with the question; `listing_stale` opens the listing
+with the restore button.
+
 ### `POST /listings/:id/close`
 
 Body: `{ "reason": "rented_in_app" | "rented_elsewhere" | "no_longer_for_rent" }`. → `200` with
@@ -543,7 +570,7 @@ A title and a body in the user's language (Amharic, or English; Afaan Oromo user
 now), naming the listing only by property type and neighbourhood, never a phone number, a name
 or a location. The data part is `{ "type": "…", "listingId": "…" }`: open that listing (for the
 lister, their own listing screen). Types in Phase 2: `weekly_check` (open the "still available?"
-answer), `listing_approved`, `listing_rejected`, `listing_taken_down`. `test` (from the server's
+answer), `listing_stale` (open the restore action), `listing_approved`, `listing_rejected`, `listing_taken_down`. `test` (from the server's
 `npm run push:send-test`) carries no listing: show it and do nothing on tap.
 
 ## Browse (no account needed)

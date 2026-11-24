@@ -23,6 +23,7 @@ import {
   CloseListingDto,
   ListingFieldsDto,
   MyListingDto,
+  StillAvailableDto,
 } from './dto/listing.dto.js';
 import { listingNotFound, propertyNotFound } from './listing-state.js';
 import { ListingsService } from './listings.service.js';
@@ -135,6 +136,42 @@ export class ListingsController {
     @Body() body: CloseListingDto,
   ): Promise<MyListingDto> {
     return this.listings.close(user.id, id, body.reason);
+  }
+
+  /**
+   * Answers the weekly check (F2): available → confirmed (stale: restored, F4); not available →
+   * closed with the reason (L12). Errors: 400 VALIDATION_FAILED (reason missing with false, or
+   * given with true), RENTED_IN_APP_NEVER_PUBLISHED; 404 LISTING_NOT_FOUND; 409
+   * INVALID_LISTING_STATE (not live or stale); 503 STORAGE_UNAVAILABLE.
+   */
+  @Post('listings/:id/still-available')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: MyListingDto })
+  stillAvailable(
+    @CurrentUser() user: User,
+    @Param('id', listingId) id: string,
+    @Body() body: StillAvailableDto,
+  ): Promise<MyListingDto> {
+    return this.listings.stillAvailable(
+      user.id,
+      id,
+      body.available,
+      body.reason,
+    );
+  }
+
+  /**
+   * Restores a stale listing (F4): back to live, no review. Errors: 404 LISTING_NOT_FOUND; 409
+   * INVALID_LISTING_STATE (not stale); 503 STORAGE_UNAVAILABLE.
+   */
+  @Post('listings/:id/restore')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: MyListingDto })
+  restore(
+    @CurrentUser() user: User,
+    @Param('id', listingId) id: string,
+  ): Promise<MyListingDto> {
+    return this.listings.restore(user.id, id);
   }
 
   /**

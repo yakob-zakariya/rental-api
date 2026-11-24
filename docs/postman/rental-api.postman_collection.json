@@ -2356,6 +2356,82 @@
           ]
         },
         {
+          "name": "Answer the weekly check: still available",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/listings/{{listingId}}/still-available",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "listings",
+                "{{listingId}}",
+                "still-available"
+              ]
+            },
+            "description": "Live: confirmed (the next check in 7 days), with or without a pending check. Stale: restored. `{ \"available\": false, \"reason\": \"rented_elsewhere\" }` closes it instead. Not live or stale: 409 `INVALID_LISTING_STATE`. To get a pending check, see manual-testing.md (the weekly check).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"available\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('a known answer', () => pm.expect([200, 400, 409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Restore a stale listing",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/listings/{{listingId}}/restore",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "listings",
+                "{{listingId}}",
+                "restore"
+              ]
+            },
+            "description": "Stale → `live`, no review. Not stale: 409 `INVALID_LISTING_STATE`. To make one stale, see manual-testing.md."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('a known answer', () => pm.expect([200, 409, 503]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Close a listing",
           "request": {
             "method": "POST",

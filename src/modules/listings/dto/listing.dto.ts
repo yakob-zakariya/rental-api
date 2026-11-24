@@ -15,6 +15,7 @@ import {
   IsUUID,
   Max,
   Min,
+  ValidateBy,
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
@@ -247,6 +248,40 @@ export class CloseListingDto {
   reason: ListerCloseReason;
 }
 
+/**
+ * The answer to the weekly check (F2). `reason` goes with `available: false` only: required
+ * then, refused with `available: true`.
+ */
+export class StillAvailableDto {
+  @ApiProperty({
+    description: 'true: still for rent; false: close it with a reason',
+  })
+  @IsBoolean()
+  available: boolean;
+
+  @ApiPropertyOptional({
+    enum: LISTER_CLOSE_REASONS,
+    description:
+      'Only with available: false (required then); as in POST /listings/:id/close',
+  })
+  @ValidateBy({
+    name: 'reasonMatchesAnswer',
+    validator: {
+      validate: (value: unknown, args) =>
+        (args?.object as { available?: unknown } | undefined)?.available ===
+        false
+          ? LISTER_CLOSE_REASONS.includes(value as ListerCloseReason)
+          : value === undefined,
+      defaultMessage: (args) =>
+        (args?.object as { available?: unknown } | undefined)?.available ===
+        false
+          ? `reason must be one of ${LISTER_CLOSE_REASONS.join(', ')}`
+          : 'reason is only allowed with available: false',
+    },
+  })
+  reason?: ListerCloseReason;
+}
+
 // --- Responses ---
 
 export class AreaRefDto {
@@ -326,6 +361,12 @@ export class MyPropertyDto {
 }
 
 /** A listing as its lister sees it (GET /me/listings, and the answer to every change). */
+export class PendingCheckDto {
+  @ApiProperty() sentAt: Date;
+  @ApiProperty({ description: 'After this, the listing goes stale (F3)' })
+  answerBy: Date;
+}
+
 export class MyListingDto {
   @ApiProperty({ format: 'uuid' }) id: string;
   @ApiProperty({ enum: ListingStatus }) status: ListingStatus;
@@ -363,6 +404,13 @@ export class MyListingDto {
       'Expired only: it was changed in a way that needs review, so reopening sends it to review instead of straight back to live',
   })
   needsReview: boolean;
+  @ApiProperty({
+    type: () => PendingCheckDto,
+    nullable: true,
+    description:
+      'The open weekly check (F1, F3): answer it before answerBy, or the listing is hidden (stale)',
+  })
+  pendingCheck: PendingCheckDto | null;
   @ApiProperty({ type: MyPropertyDto }) property: MyPropertyDto;
   @ApiProperty() createdAt: Date;
   @ApiProperty() updatedAt: Date;

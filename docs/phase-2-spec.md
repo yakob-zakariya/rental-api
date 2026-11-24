@@ -176,9 +176,14 @@ Rows are never changed (a trigger refuses UPDATE); deleting a draft deletes its 
 | id | uuid PK | |
 | listing_id | uuid FK → listings | |
 | sent_at | timestamptz | when the check was created and the push attempted |
-| responded_at | timestamptz null | |
-| response | enum `available`, `not_available`, null | |
-| push_result | enum `sent`, `no_device`, `failed` | for support; the 48 h window runs either way |
+| push_result | enum `sent`, `no_device`, `failed`, null | for support; the 48 h window runs either way; null until the send returns |
+| closed_at | timestamptz null | open while null: at most one open check per listing (partial unique index) |
+| outcome | enum `available`, `not_available`, `no_answer`, `cancelled`, null | set when closed (decided 2026-11-24, in place of `response`) |
+| responded_at | timestamptz null | the lister's answer (`available`, `not_available`) |
+| stale_pushed_at, stale_push_result | timestamptz null, enum null | the "your listing is hidden" push of a `no_answer` check |
+
+A trigger closes the open check as `cancelled` whenever the listing leaves `live` by another path
+(an edit back to review, a close, a takedown, a ban), so a re-approval never finds an old check.
 
 ### `devices` — push tokens
 | Column | Type | Notes |
@@ -472,19 +477,28 @@ Any other transition: 409 `INVALID_LISTING_STATE`. **Active** means `pending_rev
 - **F1** A `live` listing gets an availability check `LISTING_CHECK_INTERVAL` (default 7 days)
   after `published_at` or the last confirmation, whichever is later. The check is stored and a
   push is sent (section 7).
-- **F2** `available: true` sets `last_confirmed_at` and keeps the listing `live`.
+- **F2** `available: true` sets `last_confirmed_at` and keeps the listing `live`, with or without an
+  open check (decided 2026-11-24); on a `stale` listing it restores it as in F4 (a late answer).
   `available: false` needs a `reason` (`rented_in_app`, `rented_elsewhere`,
-  `no_longer_for_rent`) and closes the listing as in L12.
+  `no_longer_for_rent`) and closes the listing as in L12, from `live` or `stale`. A reason with
+  `true`, or none with `false`: 400 `VALIDATION_FAILED`.
 - **F3** No answer within `LISTING_CHECK_ANSWER_WINDOW` (default 48 h) → `stale`, hidden from
-  browse. The window runs even if the push couldn't be delivered; the pending check is also
-  shown in `GET /me/listings`.
+  browse, its photos private (R7). The window runs even if the push couldn't be delivered; the
+  pending check is also shown in `GET /me/listings` (`pendingCheck`). Decided 2026-11-24: a push
+  tells the lister ("Your apartment in Bole is hidden because it wasn't confirmed. Tap to show it
+  again."), built only from type and neighbourhood (N4), opening the restore action; none on
+  expiry.
 - **F4** Restoring a `stale` listing is one tap and needs no review (overview §6): it becomes
   `live` and counts as a confirmation.
 - **F5** `stale` for `LISTING_STALE_TO_EXPIRED` (default 30 days) → `expired`, which the lister
   reopens as in L6.
 - **F6** The job runs every 15 minutes when `JOBS_ENABLED`, uses the database clock, and is safe
   to run twice: a listing never has two open checks, and each transition happens once, under a
-  row lock.
+  row lock. `npm run listings:freshness` runs one pass now.
+- **F7 Quiet hours** (decided 2026-11-24): new checks and stale notices are sent only outside
+  `PUSH_QUIET_START`–`PUSH_QUIET_END` (default 20:00–08:00, Africa/Addis_Ababa). A check due at
+  night waits until morning, and its answer window starts when it is actually sent. Going stale
+  and expiring happen at any hour; only their notice waits.
 
 ## 7. Push notifications
 
@@ -613,6 +627,8 @@ MAX_DRAFT_LISTINGS=10              # L1: drafts per user at once
 LISTING_CHECK_INTERVAL=7d          # F1
 LISTING_CHECK_ANSWER_WINDOW=48h    # F3
 LISTING_STALE_TO_EXPIRED=30d       # F5
+PUSH_QUIET_START=20:00             # F7
+PUSH_QUIET_END=08:00               # F7
 SEARCH_MAX_RADIUS_KM=20            # G5
 ```
 
@@ -679,6 +695,10 @@ the local SeaweedFS (its own test buckets) or a fake `PhotoStorage`; tests never
 - **Service area (2026-11-10):** strict, no margin outside the OpenStreetMap boundary. A refused
   pin gets a friendly message in the app and is recorded rounded to about 1 km, with no user
   link. → G1
+- **Freshness (2026-11-24):** confirming without an open check is allowed; a late answer on a
+  stale listing restores or closes it; checks keep `closed_at` and an `outcome`, with a trigger
+  cancelling the open check when the listing leaves live; `push_result` is null until sent; a
+  push when a listing goes stale (none on expiry); quiet hours 20:00–08:00. → F2, F3, F7
 - **FCM (2026-11-24):** Firebase Installation IDs instead of registration tokens; Android only
   for now (iOS a later task); one Android channel `listings`, named in the app language (chat
   gets `messages` in Phase 3). → N1, N2

@@ -10,9 +10,13 @@ import type { PushMessage } from './push-sender.js';
 // listing's id, its property type, its neighbourhood's name and a reason code; nothing else can
 // reach the text.
 
-/** The four Phase 2 notices (N5); `listingId` opens the listing in the app. */
+/**
+ * The Phase 2 notices (N5, and the stale notice decided 2026-11-24); `listingId` opens the
+ * listing in the app (`listing_stale`: its restore action).
+ */
 export type PushNotice =
   | ({ kind: 'weekly_check' } & ListingRef)
+  | ({ kind: 'listing_stale' } & ListingRef)
   | ({ kind: 'listing_approved' } & ListingRef)
   | ({ kind: 'listing_rejected'; reasonCode: StaffReasonCode } & ListingRef)
   | ({ kind: 'listing_taken_down'; reasonCode: StaffReasonCode } & ListingRef);
@@ -76,6 +80,17 @@ const TEXTS: Record<PushNotice['kind'], Record<Language, Texts>> = {
       title: 'ቤትዎ አሁንም ለኪራይ ዝግጁ ነው?',
       // The home is for rent, not the advertisement (the user's correction, 2026-11-24).
       body: `በ${place} የሚገኘው ${type}ዎ አሁንም ለኪራይ ክፍት መሆኑን ያረጋግጡ፤ ከተከራየ ማስታወቂያውን ይዝጉ።`,
+    }),
+  },
+  listing_stale: {
+    en: ({ type, place }) => ({
+      title: 'Your listing is hidden',
+      body: `Your ${type} in ${place} is hidden because it wasn't confirmed. Tap to show it again.`,
+    }),
+    am: ({ type, place }) => ({
+      title: 'ማስታወቂያዎ ተደብቋል',
+      // Not ስላልተረጋገጠ, which reads like identity verification (the user's correction, 2026-11-24).
+      body: `በ${place} የሚገኘው የ${type} ማስታወቂያዎ አሁንም ለኪራይ ክፍት መሆኑን ስላላረጋገጡ ለተከራዮች አይታይም። እንደገና እንዲታይ ይንኩ።`,
     }),
   },
   listing_approved: {

@@ -30,6 +30,7 @@
     "dev:reset-verifications": "npm run build && node dist/cli/reset-verifications.js",
     "didit:inspect": "npm run build && node dist/cli/inspect-decision.js",
     "photos:reconcile": "npm run build && node dist/cli/reconcile-photos.js",
+    "listings:freshness": "npm run build && node dist/cli/run-freshness.js",
     "push:send-test": "npm run build && node dist/cli/send-test-push.js"
   },
   "dependencies": {

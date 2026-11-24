@@ -67,6 +67,11 @@ describe('validateEnv', () => {
     expect(env.PHOTO_MAX_INPUT_PIXELS).toBe(50_000_000);
     expect(env.SEARCH_MAX_RADIUS_KM).toBe(20);
     expect(env.PUSH_PROVIDER).toBe('console');
+    expect(env.LISTING_CHECK_INTERVAL).toBe('7d');
+    expect(env.LISTING_CHECK_ANSWER_WINDOW).toBe('48h');
+    expect(env.LISTING_STALE_TO_EXPIRED).toBe('30d');
+    expect(env.PUSH_QUIET_START).toBe('20:00');
+    expect(env.PUSH_QUIET_END).toBe('08:00');
   });
 
   it('converts numbers and booleans from strings', () => {
@@ -135,6 +140,18 @@ describe('validateEnv', () => {
     ['PHOTO_MAX_INPUT_PIXELS', '0', 'must be at least 1'],
     ['SEARCH_MAX_RADIUS_KM', '0', 'must be at least 1'],
     ['PUSH_PROVIDER', 'apns', 'must be one of console, fcm'],
+    [
+      'LISTING_CHECK_INTERVAL',
+      '7 days',
+      'must be a duration like 15m, 30d or 8h',
+    ],
+    [
+      'LISTING_STALE_TO_EXPIRED',
+      '30',
+      'must be a duration like 15m, 30d or 8h',
+    ],
+    ['PUSH_QUIET_START', '8pm', 'must be a time like 20:00'],
+    ['PUSH_QUIET_END', '24:00', 'must be a time like 08:00'],
     ['SMS_PROVIDER', 'twilio', 'must be one of console'],
     [
       'DIDIT_BASE_URL',
@@ -204,6 +221,18 @@ describe('validateEnv', () => {
     it('is rejected in production', () => {
       expect(errorOf({ ...validEnv(), NODE_ENV: 'production' })).toContain(
         "SMS_PROVIDER=console logs OTP codes and can't be used in production",
+      );
+    });
+
+    it('the answer window must be shorter than the check interval (F3)', () => {
+      expect(
+        errorOf({
+          ...validEnv(),
+          LISTING_CHECK_INTERVAL: '2d',
+          LISTING_CHECK_ANSWER_WINDOW: '48h',
+        }),
+      ).toContain(
+        'LISTING_CHECK_ANSWER_WINDOW must be shorter than LISTING_CHECK_INTERVAL',
       );
     });
 

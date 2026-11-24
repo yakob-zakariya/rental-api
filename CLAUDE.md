@@ -89,6 +89,7 @@ npm run admin:create -- --email <email> [--role super_admin]   # staff account; 
 npm run didit:inspect -- <attempt id | session id> | --latest   # shape of a Didit decision, no personal data
 npm run photos:reconcile   # one public-photo cleanup pass now (the hourly job): removes public copies of photos whose listing isn't live
 npm run push:send-test -- <phone>   # a test push to that user's signed-in phones (uses PUSH_PROVIDER)
+npm run listings:freshness   # one freshness pass now (the 15-minute job): weekly checks, stale, stale notices, expiry
 npm run dev:reset-verifications   # DEV ONLY: wipe all verification data, users → not_verified (asks to confirm)
 ```
 

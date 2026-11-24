@@ -1,3 +1,6 @@
+import { FreshnessJob } from './freshness/freshness.job.js';
+import { FreshnessService } from './freshness/freshness.service.js';
+import { AvailabilityCheck } from './freshness/availability-check.entity.js';
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MulterModule } from '@nestjs/platform-express';
@@ -28,7 +31,12 @@ import { PublicPhotos } from './public-photos.js';
 /** Properties, listings, their history and their photos (spec sections 3 and 4). */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Property, Listing, ListingHistory]),
+    TypeOrmModule.forFeature([
+      Property,
+      Listing,
+      ListingHistory,
+      AvailabilityCheck,
+    ]),
     // The service-area check for the pin (G1).
     AreasModule,
     // Storage, re-encoding and the photo rows (P1, P2).
@@ -62,6 +70,8 @@ import { PublicPhotos } from './public-photos.js';
     PublicPhotos,
     PublicPhotoReconciliation,
     PublicPhotoReconciliationJob,
+    FreshnessService,
+    FreshnessJob,
     PhotoUploadErrorFilter,
     { provide: PhotoCounter, useClass: DbPhotoCounter },
   ],

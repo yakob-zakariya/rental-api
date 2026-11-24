@@ -209,7 +209,8 @@ export async function recordStatusChange(
   listingId: string,
   oldStatus: ListingStatus | null,
   newStatus: ListingStatus,
-  actorId: string,
+  /** Null for the system (the freshness job), with `actorType: system`. */
+  actorId: string | null,
   extra: Pick<
     Partial<ListingHistory>,
     'closeReason' | 'staffReasonCode' | 'actorType'

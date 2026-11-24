@@ -8,6 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { DataSource, EntityManager, In, type Point } from 'typeorm';
 import { ADDIS_ABABA_TIME_ZONE, todayIn } from '../../common/dates.js';
+import { durationToSeconds } from '../../common/duration.js';
 import type { EnvironmentVariables } from '../../config/env.validation.js';
 import { ServiceAreaService } from '../areas/service-area.service.js';
 import { PhotoStorage } from '../photos/photo-storage.js';
@@ -18,8 +19,11 @@ import type {
   LatLngDto,
   ListingFieldsDto,
   MyListingDto,
+  PendingCheckDto,
   PhotoDto,
 } from './dto/listing.dto.js';
+import { closeOpenCheck } from './freshness/checks.js';
+import { CheckOutcome } from './freshness/availability-check.entity.js';
 import { assertWithinLimits } from './listing-limits.js';
 import { missingFields } from './listing-completeness.js';
 import {
@@ -103,6 +107,7 @@ export class ListingsService {
   private readonly logger = new Logger(ListingsService.name);
   private readonly maxDrafts: number;
   private readonly maxActive: number;
+  private readonly answerWindowSeconds: number;
 
   constructor(
     private readonly dataSource: DataSource,
@@ -114,6 +119,9 @@ export class ListingsService {
   ) {
     this.maxDrafts = config.get('MAX_DRAFT_LISTINGS', { infer: true });
     this.maxActive = config.get('LISTING_MAX_ACTIVE_PER_USER', { infer: true });
+    this.answerWindowSeconds = durationToSeconds(
+      config.get('LISTING_CHECK_ANSWER_WINDOW', { infer: true }),
+    );
   }
 
   /** Every listing of the user, in any state, newest first. */
@@ -434,30 +442,125 @@ export class ListingsService {
     id: string,
     reason: ListerCloseReason,
   ): Promise<MyListingDto> {
+    const wasPublished = await this.dataSource.transaction(async (manager) =>
+      this.closeLocked(
+        manager,
+        userId,
+        await lockMine(manager, userId, id),
+        reason,
+      ),
+    );
+    if (wasPublished) await this.publicPhotos.unpublish(wasPublished);
+    return this.getMine(userId, id);
+  }
+
+  /** Close (L12) on a listing the caller has locked; returns the property to unpublish, if any. */
+  private async closeLocked(
+    manager: EntityManager,
+    userId: string,
+    locked: LockedListing,
+    reason: ListerCloseReason,
+  ): Promise<string | null> {
+    if (!CLOSABLE.includes(locked.status)) throw invalidState();
+    if (reason === CloseReason.RentedInApp && locked.published_at === null)
+      throw new BadRequestException({
+        code: 'RENTED_IN_APP_NEVER_PUBLISHED',
+      });
+
+    const status =
+      reason === CloseReason.NoLongerForRent
+        ? ListingStatus.Removed
+        : ListingStatus.Rented;
+    await manager.update(Listing, locked.id, {
+      status,
+      closeReason: reason,
+      closedAt: () => 'now()',
+    });
+    await recordStatusChange(
+      manager,
+      locked.id,
+      locked.status,
+      status,
+      userId,
+      {
+        closeReason: reason,
+      },
+    );
+    return PUBLISHED.includes(locked.status) ? locked.property_id : null;
+  }
+
+  /**
+   * The answer to the weekly check (F2; decided 2026-11-24). `available: true` on a live listing
+   * confirms it (last_confirmed_at, restarting the 7 days), with or without an open check (Q1);
+   * on a stale one it restores it, as F4 (a late tap on the notification, Q2). `available:
+   * false` closes it as in L12, from live or stale. The open check, if any, is closed with the
+   * answer in the same transaction.
+   * Errors: as close; 404 LISTING_NOT_FOUND; 409 INVALID_LISTING_STATE (not live or stale);
+   * 503 STORAGE_UNAVAILABLE (restoring: its photos couldn't be made public).
+   */
+  async stillAvailable(
+    userId: string,
+    id: string,
+    available: boolean,
+    reason: ListerCloseReason | undefined,
+  ): Promise<MyListingDto> {
     const wasPublished = await this.dataSource.transaction(async (manager) => {
       const locked = await lockMine(manager, userId, id);
-      if (!CLOSABLE.includes(locked.status)) throw invalidState();
-      if (reason === CloseReason.RentedInApp && locked.published_at === null)
-        throw new BadRequestException({
-          code: 'RENTED_IN_APP_NEVER_PUBLISHED',
-        });
+      if (
+        locked.status !== ListingStatus.Live &&
+        locked.status !== ListingStatus.Stale
+      )
+        throw invalidState();
 
-      const status =
-        reason === CloseReason.NoLongerForRent
-          ? ListingStatus.Removed
-          : ListingStatus.Rented;
-      await manager.update(Listing, id, {
-        status,
-        closeReason: reason,
-        closedAt: () => 'now()',
-      });
-      await recordStatusChange(manager, id, locked.status, status, userId, {
-        closeReason: reason,
-      });
-      return PUBLISHED.includes(locked.status) ? locked.property_id : null;
+      if (available) {
+        if (locked.status === ListingStatus.Stale)
+          await this.restoreLocked(manager, userId, locked);
+        else {
+          await closeOpenCheck(manager, id, CheckOutcome.Available);
+          await manager.update(Listing, id, { lastConfirmedAt: () => 'now()' });
+        }
+        return null;
+      }
+      // Closed with the answer first, so the trigger doesn't record it as cancelled.
+      await closeOpenCheck(manager, id, CheckOutcome.NotAvailable);
+      return this.closeLocked(manager, userId, locked, reason!);
     });
     if (wasPublished) await this.publicPhotos.unpublish(wasPublished);
     return this.getMine(userId, id);
+  }
+
+  /**
+   * Restores a stale listing with one tap and no review (F4): back to live, counted as a
+   * confirmation. Its photos become public again inside the transaction (R7).
+   * Errors: 404 LISTING_NOT_FOUND; 409 INVALID_LISTING_STATE (not stale); 503
+   * STORAGE_UNAVAILABLE.
+   */
+  async restore(userId: string, id: string): Promise<MyListingDto> {
+    await this.dataSource.transaction(async (manager) => {
+      const locked = await lockMine(manager, userId, id);
+      if (locked.status !== ListingStatus.Stale) throw invalidState();
+      await this.restoreLocked(manager, userId, locked);
+    });
+    return this.getMine(userId, id);
+  }
+
+  private async restoreLocked(
+    manager: EntityManager,
+    userId: string,
+    locked: LockedListing,
+  ): Promise<void> {
+    await manager.update(Listing, locked.id, {
+      status: ListingStatus.Live,
+      lastConfirmedAt: () => 'now()',
+    });
+    await this.publicPhotos.publish(manager, locked.property_id);
+    await recordStatusChange(
+      manager,
+      locked.id,
+      ListingStatus.Stale,
+      ListingStatus.Live,
+      userId,
+    );
   }
 
   /**
@@ -620,8 +723,31 @@ export class ListingsService {
       });
       views.set(photo.propertyId, list);
     }
+    const checks =
+      listings.length === 0
+        ? []
+        : await this.dataSource.query<{ listing_id: string; sent_at: Date }[]>(
+            `SELECT listing_id, sent_at FROM availability_checks
+             WHERE listing_id = ANY ($1) AND closed_at IS NULL`,
+            [listings.map((l) => l.id)],
+          );
+    const pending = new Map<string, PendingCheckDto>(
+      checks.map((c) => [
+        c.listing_id,
+        {
+          sentAt: c.sent_at,
+          answerBy: new Date(
+            c.sent_at.getTime() + this.answerWindowSeconds * 1000,
+          ),
+        },
+      ]),
+    );
     return listings.map((listing) =>
-      toMyListing(listing, views.get(listing.propertyId) ?? []),
+      toMyListing(
+        listing,
+        views.get(listing.propertyId) ?? [],
+        pending.get(listing.id) ?? null,
+      ),
     );
   }
 
@@ -736,7 +862,11 @@ const toPoint = (location: LatLngDto | null): Point | null =>
 const toLatLng = (point: Point | null) =>
   point ? { lat: point.coordinates[1], lng: point.coordinates[0] } : null;
 
-function toMyListing(listing: Listing, photos: PhotoDto[]): MyListingDto {
+function toMyListing(
+  listing: Listing,
+  photos: PhotoDto[],
+  pendingCheck: PendingCheckDto | null,
+): MyListingDto {
   const property = listing.property!;
   const neighbourhood = property.neighbourhood ?? null;
   const subCity = neighbourhood?.subCity ?? null;
@@ -753,6 +883,7 @@ function toMyListing(listing: Listing, photos: PhotoDto[]): MyListingDto {
     staffReasonCode: listing.staffReasonCode,
     listerNote: listing.listerNote,
     needsReview: listing.needsReview,
+    pendingCheck,
     property: {
       id: property.id,
       neighbourhood: neighbourhood && {
