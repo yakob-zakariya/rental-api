@@ -120,6 +120,7 @@ unless a query asks for them by name (G3).
 | id | uuid PK | |
 | property_id | uuid FK → properties | |
 | storage_key | varchar | the re-encoded file in object storage (P1) |
+| thumbnail_key | varchar null | the thumbnail (480 px, T3.4); null only for photos uploaded before it |
 | phash | varchar(16) | 64-bit perceptual hash, hex (P3) |
 | width, height, bytes | int | of the stored file |
 | position | int | display order, unique per property |
@@ -348,6 +349,13 @@ Any other transition: 409 `INVALID_LISTING_STATE`. **Active** means `pending_rev
     XMP, IPTC, ICC, MPF or other segment, nothing after the end of the image.
   - Not covered: what the picture itself shows (a street sign, a shop name). That's for the
     reviewer (R1).
+  - **Thumbnails (T3.4, decided 2026-11-24):** each upload also stores a thumbnail, at most 480 px
+    on the longest side (JPEG), written the same way from the same decoded pixels, so P2 applies
+    to it too (the tests check it byte by byte). A photo and its thumbnail are one unit: stored,
+    published, unpublished, purged and deleted together (`photoFiles()`), and the reconciliation
+    job keeps or removes both. Browse cards (G5) use the thumbnail; the detail (G6) and the
+    lister's and staff's views use the full photo. Reason: a page of 20 full photos would be
+    several MB on mobile data.
 - **P3** Each stored photo gets a 64-bit perceptual hash, compared with the photos of every
   property **of other listers**. A Hamming distance ≤ `PHOTO_HASH_MAX_DISTANCE` is a match. A
   match never refuses the upload: it is shown to the reviewer (R1). The library is chosen in the

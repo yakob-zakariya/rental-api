@@ -31,6 +31,7 @@ export interface ReconcileSummary {
 
 interface Verdict {
   storage_key: string;
+  thumbnail_key: string | null;
   listing_status: ListingStatus | null;
 }
 
@@ -176,15 +177,16 @@ export class PublicPhotoReconciliation {
 
 /**
  * For each key with a photo record: the status of its property's current listing (live if any
- * listing of the property is live, else the latest one's status, null if none). Keys with no
- * photo record are absent from the map.
+ * listing of the property is live, else the latest one's status, null if none). A key may be a
+ * photo's or its thumbnail's (T3.4): both get the same answer, so they're kept or removed as one
+ * photo. Keys with no photo record are absent from the map.
  */
 async function verdictsFor(
   manager: EntityManager,
   keys: string[],
 ): Promise<Map<string, ListingStatus | null>> {
   const rows = await manager.query<Verdict[]>(
-    `SELECT ph.storage_key,
+    `SELECT ph.storage_key, ph.thumbnail_key,
        CASE WHEN EXISTS (SELECT 1 FROM listings l
                          WHERE l.property_id = ph.property_id AND l.status = 'live')
             THEN 'live'
@@ -192,8 +194,15 @@ async function verdictsFor(
                   ORDER BY l.created_at DESC LIMIT 1)
        END AS listing_status
      FROM property_photos ph
-     WHERE ph.storage_key = ANY ($1)`,
+     WHERE ph.storage_key = ANY ($1) OR ph.thumbnail_key = ANY ($1)`,
     [keys],
   );
-  return new Map(rows.map((r) => [r.storage_key, r.listing_status]));
+  return new Map(
+    rows.flatMap((r) => [
+      [r.storage_key, r.listing_status] as const,
+      ...(r.thumbnail_key
+        ? [[r.thumbnail_key, r.listing_status] as const]
+        : []),
+    ]),
+  );
 }

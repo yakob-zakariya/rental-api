@@ -11,7 +11,7 @@ import { ADDIS_ABABA_TIME_ZONE, todayIn } from '../../common/dates.js';
 import type { EnvironmentVariables } from '../../config/env.validation.js';
 import { ServiceAreaService } from '../areas/service-area.service.js';
 import { PhotoStorage } from '../photos/photo-storage.js';
-import { PropertyPhoto } from '../photos/property-photo.entity.js';
+import { photoFiles, PropertyPhoto } from '../photos/property-photo.entity.js';
 import { VerificationStatus } from '../users/user.enums.js';
 import { randomOffset } from './approx-location.js';
 import type {
@@ -296,7 +296,7 @@ export class ListingsService {
       });
       await manager.delete(PropertyPhoto, { propertyId: locked.property_id });
       await manager.delete(Property, locked.property_id);
-      return photos.map((photo) => photo.storageKey);
+      return photos.flatMap(photoFiles);
     });
     // After the commit: if the transaction had failed, the files would still be needed.
     await this.deleteFiles(deletedKeys);

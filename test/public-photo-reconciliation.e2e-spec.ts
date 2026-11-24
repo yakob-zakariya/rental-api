@@ -137,13 +137,17 @@ describe('public photo reconciliation (e2e, T4.4)', () => {
     await approve(listing.id, listing.version).expect(200);
     return listing;
   };
+  /** Every file of the property's photos, in order: each photo, then its thumbnail (T3.4). */
   const keysOf = async (propertyId: string) =>
     (
-      await db.query<{ storage_key: string }[]>(
-        `SELECT storage_key FROM property_photos WHERE property_id = $1 ORDER BY position`,
+      await db.query<{ storage_key: string; thumbnail_key: string }[]>(
+        `SELECT storage_key, thumbnail_key FROM property_photos WHERE property_id = $1 ORDER BY position`,
         [propertyId],
       )
-    ).map((r) => r.storage_key);
+    ).flatMap((r) => [r.storage_key, r.thumbnail_key]);
+  /** 3 photos, each with a thumbnail. */
+  const FILES = 6;
+  const all = (status: number) => Array<number>(FILES).fill(status);
   const publicStatus = async (keys: string[]) =>
     Promise.all(
       keys.map(async (k) => (await fetch(storage.publicUrl(k))).status),
@@ -167,7 +171,7 @@ describe('public photo reconciliation (e2e, T4.4)', () => {
     unpublish.mockRestore();
     expect(body.status).toBe('pending_review');
     const keys = await keysOf(listing.propertyId);
-    expect(await publicStatus(keys)).toEqual([200, 200, 200]);
+    expect(await publicStatus(keys)).toEqual(all(200));
     return { ...listing, version: body.version as number, keys };
   };
 
@@ -175,23 +179,26 @@ describe('public photo reconciliation (e2e, T4.4)', () => {
     it('copies left after a takedown whose unpublish failed; the CDN is asked to forget them; the private copies stay', async () => {
       const listing = await live(await lister());
       const keys = await keysOf(listing.propertyId);
-      vi.spyOn(storage, 'unpublish')
-        .mockRejectedValueOnce(new Error('storage down'))
-        .mockRejectedValueOnce(new Error('storage down'))
-        .mockRejectedValueOnce(new Error('storage down'));
+      vi.spyOn(storage, 'unpublish').mockRejectedValue(
+        new Error('storage down'),
+      );
       await http()
         .post(`/admin/listings/${listing.id}/takedown`)
         .set(moderator)
         .send({ reasonCode: 'GUIDELINES', note: 'Scam' })
         .expect(200);
       vi.restoreAllMocks();
-      expect(await publicStatus(keys)).toEqual([200, 200, 200]);
+      expect(await publicStatus(keys)).toEqual(all(200));
       cdn.purged = [];
 
       const summary = await job.runOnce({ olderThan: ALL_OLD() });
 
-      expect(summary).toMatchObject({ skipped: false, removed: 3, errors: 0 });
-      expect(await publicStatus(keys)).toEqual([404, 404, 404]);
+      expect(summary).toMatchObject({
+        skipped: false,
+        removed: FILES,
+        errors: 0,
+      });
+      expect(await publicStatus(keys)).toEqual(all(404));
       expect(cdn.purged.sort()).toEqual(
         keys.map((k) => storage.publicUrl(k)).sort(),
       );
@@ -206,21 +213,21 @@ describe('public photo reconciliation (e2e, T4.4)', () => {
 
       const summary = await job.runOnce({ olderThan: ALL_OLD() });
 
-      expect(summary.removed).toBe(3);
-      expect(await publicStatus(keys)).toEqual([404, 404, 404]);
+      expect(summary.removed).toBe(FILES);
+      expect(await publicStatus(keys)).toEqual(all(404));
     });
 
-    it('a public copy whose photo record is gone', async () => {
+    it('a public copy whose photo record is gone: the photo and its thumbnail', async () => {
       const listing = await live(await lister());
-      const [key] = await keysOf(listing.propertyId);
+      const [key, thumbnail] = await keysOf(listing.propertyId);
       await db.query(`DELETE FROM property_photos WHERE storage_key = $1`, [
         key,
       ]);
 
       const summary = await job.runOnce({ olderThan: ALL_OLD() });
 
-      expect(summary.removed).toBe(1);
-      expect(await publicStatus([key])).toEqual([404]);
+      expect(summary.removed).toBe(2);
+      expect(await publicStatus([key, thumbnail])).toEqual([404, 404]);
     });
   });
 
@@ -231,8 +238,8 @@ describe('public photo reconciliation (e2e, T4.4)', () => {
 
       const summary = await job.runOnce({ olderThan: ALL_OLD() });
 
-      expect(summary).toMatchObject({ kept: 3, removed: 0 });
-      expect(await publicStatus(keys)).toEqual([200, 200, 200]);
+      expect(summary).toMatchObject({ kept: FILES, removed: 0 });
+      expect(await publicStatus(keys)).toEqual(all(200));
     });
 
     it('copies younger than 15 minutes, with the default cut-off (an approval may be mid-way)', async () => {
@@ -242,8 +249,8 @@ describe('public photo reconciliation (e2e, T4.4)', () => {
 
       const summary = await job.runOnce();
 
-      expect(summary).toMatchObject({ recent: 3, removed: 0 });
-      expect(await publicStatus(keys)).toEqual([200, 200, 200]);
+      expect(summary).toMatchObject({ recent: FILES, removed: 0 });
+      expect(await publicStatus(keys)).toEqual(all(200));
     });
 
     it('anything outside properties/ is left alone (and counted)', async () => {
@@ -271,7 +278,7 @@ describe('public photo reconciliation (e2e, T4.4)', () => {
     for (const key of await keysOf(listing.propertyId))
       await storage.publish(key);
 
-    expect((await job.runOnce({ olderThan: ALL_OLD() })).removed).toBe(3);
+    expect((await job.runOnce({ olderThan: ALL_OLD() })).removed).toBe(FILES);
     expect((await job.runOnce({ olderThan: ALL_OLD() })).removed).toBe(0);
   });
 
@@ -316,9 +323,9 @@ describe('public photo reconciliation (e2e, T4.4)', () => {
       const summary = await pass;
       const response = await approval;
 
-      expect(summary.removed).toBe(3);
+      expect(summary.removed).toBe(FILES);
       expect(response.status).toBe(200);
-      expect(await publicStatus(listing.keys)).toEqual([200, 200, 200]);
+      expect(await publicStatus(listing.keys)).toEqual(all(200));
     });
 
     it('the approval holds the lock first: the job waits, then sees the listing live and keeps the photos', async () => {
@@ -342,8 +349,8 @@ describe('public photo reconciliation (e2e, T4.4)', () => {
       expect((await approval).status).toBe(200);
       const summary = await pass;
 
-      expect(summary).toMatchObject({ removed: 0, kept: 3 });
-      expect(await publicStatus(listing.keys)).toEqual([200, 200, 200]);
+      expect(summary).toMatchObject({ removed: 0, kept: FILES });
+      expect(await publicStatus(listing.keys)).toEqual(all(200));
     });
   });
 

@@ -43,6 +43,7 @@ describe('photos: upload, delete, reorder (e2e, T3.2)', () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await resetDatabase(app);
   });
 
@@ -115,6 +116,76 @@ describe('photos: upload, delete, reorder (e2e, T3.2)', () => {
         [propertyId],
       )
     ).map((r) => r.storage_key);
+  /** Every file of the property's photos: each photo and its thumbnail (T3.4). */
+  const filesOf = async (propertyId: string) =>
+    (
+      await db.query<{ storage_key: string; thumbnail_key: string }[]>(
+        `SELECT storage_key, thumbnail_key FROM property_photos WHERE property_id = $1 ORDER BY position`,
+        [propertyId],
+      )
+    ).flatMap((r) => [r.storage_key, r.thumbnail_key]);
+  const privateStatus = async (keys: string[]) =>
+    Promise.all(
+      keys.map(async (k) => (await fetch(await storage.signedUrl(k))).status),
+    );
+
+  describe('thumbnails (T3.4)', () => {
+    it('each upload stores a thumbnail next to the photo, under a key with no personal data', async () => {
+      const who = await lister();
+      const { propertyId } = await draft(who);
+
+      const { body } = await upload(who, propertyId).expect(201);
+
+      const photoId = body.property.photos[0].id;
+      expect(await filesOf(propertyId)).toEqual([
+        `properties/${propertyId}/${photoId}.jpg`,
+        `properties/${propertyId}/${photoId}-thumb.jpg`,
+      ]);
+      expect(await privateStatus(await filesOf(propertyId))).toEqual([
+        200, 200,
+      ]);
+    });
+
+    it('deleting a photo deletes its thumbnail too', async () => {
+      const who = await lister();
+      const { propertyId, photoIds } = await withPhotos(who, 2);
+      const [photo, thumbnail] = await filesOf(propertyId);
+
+      await remove(who, propertyId, photoIds[0]).expect(200);
+
+      expect(await privateStatus([photo, thumbnail])).toEqual([404, 404]);
+    });
+
+    it('deleting a first draft deletes every thumbnail too', async () => {
+      const who = await lister();
+      const { id, propertyId } = await withPhotos(who, 2);
+      const files = await filesOf(propertyId);
+
+      await http().delete(`/listings/${id}`).set(auth(who)).expect(204);
+
+      expect(await privateStatus(files)).toEqual([404, 404, 404, 404]);
+    });
+
+    it('if storing the thumbnail fails, the photo file is removed again and nothing is recorded', async () => {
+      const who = await lister();
+      const { propertyId } = await draft(who);
+      const realPut = storage.putPrivate.bind(storage);
+      const stored: string[] = [];
+      vi.spyOn(storage, 'putPrivate').mockImplementation(
+        async (key, body, type) => {
+          if (key.endsWith('-thumb.jpg')) throw new Error('storage down');
+          stored.push(key);
+          return realPut(key, body, type);
+        },
+      );
+
+      await upload(who, propertyId).expect(500);
+
+      vi.restoreAllMocks();
+      expect(await filesOf(propertyId)).toEqual([]);
+      expect(await privateStatus(stored)).toEqual([404]);
+    });
+  });
 
   describe('POST /properties/:id/photos', () => {
     it('adds the photo at the end, stored under a key with no personal data, with a working signed link', async () => {

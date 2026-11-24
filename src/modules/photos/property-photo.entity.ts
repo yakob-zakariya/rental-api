@@ -17,6 +17,7 @@ import { Property } from '../listings/property.entity.js';
  */
 @Entity('property_photos')
 @Unique('UQ_property_photos_storage_key', ['storageKey'])
+@Unique('UQ_property_photos_thumbnail_key', ['thumbnailKey'])
 // Positions are 0, 1, 2… per property. Deferred to the end of the transaction, so a reorder can
 // swap positions without tripping over itself halfway.
 @Unique('UQ_property_photos_property_id_position', ['propertyId', 'position'], {
@@ -47,6 +48,19 @@ export class PropertyPhoto {
   @Column({ name: 'storage_key', type: 'varchar', length: 255 })
   storageKey: string;
 
+  /**
+   * The thumbnail for browse cards (T3.4): properties/<property id>/<photo id>-thumb.jpg. Always
+   * stored, published, unpublished and deleted together with the photo. Null only for photos
+   * uploaded before T3.4 (development data), which show the full photo instead.
+   */
+  @Column({
+    name: 'thumbnail_key',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  thumbnailKey: string | null;
+
   /** Of the stored (re-encoded) file. */
   @Column({ type: 'int' })
   width: number;
@@ -64,3 +78,14 @@ export class PropertyPhoto {
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 }
+
+/**
+ * The files of one photo in storage: the photo and its thumbnail (T3.4). Every path that stores,
+ * publishes, unpublishes or deletes a photo handles all of them, so they never get out of step.
+ */
+export const photoFiles = (
+  photo: Pick<PropertyPhoto, 'storageKey' | 'thumbnailKey'>,
+): string[] =>
+  photo.thumbnailKey
+    ? [photo.storageKey, photo.thumbnailKey]
+    : [photo.storageKey];

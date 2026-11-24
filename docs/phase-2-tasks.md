@@ -73,6 +73,12 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
       recompressed copies and on different photos; set `PHOTO_HASH_MAX_DISTANCE` from the results;
       match only other listers' photos (P3); tests.
 
+- [x] **T3.4 Thumbnails** (added 2026-11-24, before T5.1). At upload, a 480 px JPEG thumbnail
+      with the same metadata removal (P2), stored, published, unpublished and deleted with the
+      photo; the reconciliation job treats both as one photo. Browse cards use it (T5.1), the
+      detail the full photos (T5.2). Tests: the thumbnail's metadata, size and orientation; it
+      follows the photo everywhere. Done 2026-11-24.
+
 ## Step 4 — Staff review
 
 - [x] **T4.1 Queue and detail.** `GET /admin/listings`, `GET /admin/listings/:id` with the four

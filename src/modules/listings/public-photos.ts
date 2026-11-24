@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import { PhotoStorage } from '../photos/photo-storage.js';
-import { PropertyPhoto } from '../photos/property-photo.entity.js';
+import { photoFiles, PropertyPhoto } from '../photos/property-photo.entity.js';
 import { PublicCache } from '../photos/public-cache.js';
 
 /**
@@ -33,7 +33,9 @@ export class PublicPhotos {
   async publish(manager: EntityManager, propertyId: string): Promise<void> {
     const photos = await manager.findBy(PropertyPhoto, { propertyId });
     try {
-      for (const photo of photos) await this.storage.publish(photo.storageKey);
+      // The photo and its thumbnail (T3.4): published together, or the approval fails.
+      for (const key of photos.flatMap(photoFiles))
+        await this.storage.publish(key);
     } catch (error) {
       this.logger.error(
         `Publishing photos of property ${propertyId} failed: ${(error as Error).message}`,
@@ -54,18 +56,20 @@ export class PublicPhotos {
     const photos = await this.dataSource.manager.findBy(PropertyPhoto, {
       propertyId,
     });
-    for (const photo of photos) {
+    // The photos and their thumbnails (T3.4).
+    const keys = photos.flatMap(photoFiles);
+    for (const key of keys) {
       try {
-        await this.storage.unpublish(photo.storageKey);
+        await this.storage.unpublish(key);
       } catch (error) {
         this.logger.warn(
-          `Unpublishing ${photo.storageKey} failed (the reconciliation job will retry): ${(error as Error).message}`,
+          `Unpublishing ${key} failed (the reconciliation job will retry): ${(error as Error).message}`,
         );
       }
     }
     if (purgeCdn)
       await this.cache
-        .purge(photos.map((photo) => this.storage.publicUrl(photo.storageKey)))
+        .purge(keys.map((key) => this.storage.publicUrl(key)))
         .catch((error: Error) =>
           this.logger.warn(`CDN purge failed: ${error.message}`),
         );

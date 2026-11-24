@@ -23,6 +23,13 @@ sharp.unblock({
 /** JPEG quality of stored photos: good for phone screens, about a third of the original size. */
 const JPEG_QUALITY = 82;
 
+/**
+ * Thumbnails for browse cards (T3.4, decided 2026-11-24): a page of 20 full photos would be
+ * several MB on mobile data. Longest side in pixels, and a lower quality: they're shown small.
+ */
+export const THUMBNAIL_MAX_DIMENSION = 480;
+const THUMBNAIL_JPEG_QUALITY = 75;
+
 /** Seconds sharp may spend on one photo before giving up. */
 const PROCESSING_TIMEOUT_SECONDS = 20;
 
@@ -31,6 +38,8 @@ export interface ProcessedPhoto {
   body: Buffer;
   width: number;
   height: number;
+  /** The same picture, at most THUMBNAIL_MAX_DIMENSION px, written the same way (no metadata). */
+  thumbnail: Buffer;
 }
 
 /**
@@ -50,6 +59,7 @@ export interface ProcessedPhoto {
  * 4. Shrink to at most PHOTO_MAX_DIMENSION on the longest side (never enlarge).
  * 5. Convert to sRGB, so no colour profile is needed, and write a JPEG. sharp writes no metadata
  *    unless asked to (keepMetadata, keepExif, withMetadata…), and nothing here asks.
+ * 6. Write a thumbnail the same way from the same decoded image (T3.4).
  */
 @Injectable()
 export class ImageProcessor {
@@ -95,16 +105,29 @@ export class ImageProcessor {
       });
 
     try {
-      const { data, info } = await sharp(input, options)
+      // One decode, two outputs: clone() reuses the decoded input for each pipeline.
+      const decoded = sharp(input, options)
         .timeout({ seconds: PROCESSING_TIMEOUT_SECONDS })
-        .resize(this.maxDimension, this.maxDimension, {
-          fit: 'inside',
-          withoutEnlargement: true,
-        })
-        .toColourspace('srgb')
-        .jpeg({ quality: JPEG_QUALITY, mozjpeg: true })
-        .toBuffer({ resolveWithObject: true });
-      return { body: data, width: info.width, height: info.height };
+        .toColourspace('srgb');
+      const [{ data, info }, thumbnail] = await Promise.all([
+        decoded
+          .clone()
+          .resize(this.maxDimension, this.maxDimension, {
+            fit: 'inside',
+            withoutEnlargement: true,
+          })
+          .jpeg({ quality: JPEG_QUALITY, mozjpeg: true })
+          .toBuffer({ resolveWithObject: true }),
+        decoded
+          .clone()
+          .resize(THUMBNAIL_MAX_DIMENSION, THUMBNAIL_MAX_DIMENSION, {
+            fit: 'inside',
+            withoutEnlargement: true,
+          })
+          .jpeg({ quality: THUMBNAIL_JPEG_QUALITY, mozjpeg: true })
+          .toBuffer(),
+      ]);
+      return { body: data, width: info.width, height: info.height, thumbnail };
     } catch {
       throw new BadRequestException({ code: 'PHOTO_UNREADABLE' });
     }

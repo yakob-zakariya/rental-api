@@ -5,7 +5,9 @@ import exifr from 'exifr';
 import sharp from 'sharp';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
+import { PhotoStorage } from '../src/modules/photos/photo-storage.js';
 import { SmsSender } from '../src/modules/sms/sms-sender.js';
+import { DataSource } from 'typeorm';
 import { FakeSmsSender } from './fakes/fake-sms-sender.js';
 import { UnlimitedThrottlerStorage } from './fakes/unlimited-throttler-storage.js';
 import { createTestApp, resetDatabase } from './utils/create-test-app.js';
@@ -63,7 +65,10 @@ describe('photos: no metadata survives (e2e, spec P2)', () => {
     await app.close();
   });
 
-  /** Uploads a file and returns the stored photo's bytes, fetched through its signed link. */
+  /**
+   * Uploads a file and returns the stored photo's bytes (fetched through its signed link) and its
+   * thumbnail's (T3.4), which must be just as clean.
+   */
   const uploadAndFetch = async (file: Buffer, filename = 'photo.jpg') => {
     const { body } = await request(app.getHttpServer())
       .post(`/properties/${propertyId}/photos`)
@@ -73,9 +78,20 @@ describe('photos: no metadata survives (e2e, spec P2)', () => {
     const photo = body.property.photos.at(-1);
     const response = await fetch(photo.url);
     expect(response.status).toBe(200);
+    const [{ thumbnail_key }] = await app
+      .get(DataSource)
+      .query<{ thumbnail_key: string }[]>(
+        `SELECT thumbnail_key FROM property_photos WHERE id = $1`,
+        [photo.id],
+      );
+    const thumbnailResponse = await fetch(
+      await app.get(PhotoStorage).signedUrl(thumbnail_key),
+    );
+    expect(thumbnailResponse.status).toBe(200);
     return {
       photo,
       stored: Buffer.from(await response.arrayBuffer()),
+      thumbnail: Buffer.from(await thumbnailResponse.arrayBuffer()),
     };
   };
 
@@ -140,9 +156,10 @@ describe('photos: no metadata survives (e2e, spec P2)', () => {
         expect(where?.latitude).toEqual(expect.any(Number));
         expect(where?.longitude).toEqual(expect.any(Number));
 
-        const { stored, photo } = await uploadAndFetch(original);
+        const { stored, photo, thumbnail } = await uploadAndFetch(original);
 
         await expectNoMetadata(stored);
+        await expectNoMetadata(thumbnail);
         expect(Math.max(photo.width, photo.height)).toBeLessThanOrEqual(2048);
       },
     );
@@ -163,9 +180,10 @@ describe('photos: no metadata survives (e2e, spec P2)', () => {
     );
     expect(endsAtEndOfImage(original)).toBe(false);
 
-    const { stored } = await uploadAndFetch(original);
+    const { stored, thumbnail } = await uploadAndFetch(original);
 
     await expectNoMetadata(stored);
+    await expectNoMetadata(thumbnail);
   });
 
   it.each(['png', 'webp'] as const)(
@@ -174,9 +192,13 @@ describe('photos: no metadata survives (e2e, spec P2)', () => {
       const original = await withGps(format);
       expect(await gpsIn(original)).toBeDefined();
 
-      const { stored } = await uploadAndFetch(original, `photo.${format}`);
+      const { stored, thumbnail } = await uploadAndFetch(
+        original,
+        `photo.${format}`,
+      );
 
       await expectNoMetadata(stored);
+      await expectNoMetadata(thumbnail);
     },
   );
 
@@ -189,6 +211,30 @@ describe('photos: no metadata survives (e2e, spec P2)', () => {
       width: 200,
       height: 300,
     });
+  });
+
+  it('the thumbnail (T3.4): at most 480 px, upright, the same picture; a small photo is not enlarged', async () => {
+    const big = await uploadAndFetch(await plainImage(4000, 3000));
+    expect(await sharp(big.thumbnail).metadata()).toMatchObject({
+      format: 'jpeg',
+      width: 480,
+      height: 360,
+    });
+
+    // Stored sideways with "rotate 90°": the thumbnail is upright too (portrait).
+    const turned = await uploadAndFetch(await jpegWithEverything());
+    expect(await sharp(turned.thumbnail).metadata()).toMatchObject({
+      width: 200,
+      height: 300,
+    });
+
+    const small = await uploadAndFetch(await plainImage(320, 240));
+    expect(await sharp(small.thumbnail).metadata()).toMatchObject({
+      width: 320,
+      height: 240,
+    });
+    // Much lighter than the full photo: the point of having it.
+    expect(big.thumbnail.length).toBeLessThan(big.stored.length / 3);
   });
 
   it('a large photo is shrunk to 2048 px on its longest side; a small one is not enlarged', async () => {

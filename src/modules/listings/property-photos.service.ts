@@ -8,7 +8,7 @@ import {
 import { DataSource } from 'typeorm';
 import { ImageProcessor } from '../photos/image-processor.js';
 import { PhotoStorage } from '../photos/photo-storage.js';
-import { PropertyPhoto } from '../photos/property-photo.entity.js';
+import { photoFiles, PropertyPhoto } from '../photos/property-photo.entity.js';
 import type { MyListingDto } from './dto/listing.dto.js';
 import {
   applyChangeEffects,
@@ -70,7 +70,19 @@ export class PropertyPhotosService {
 
     const photoId = randomUUID();
     const storageKey = `properties/${propertyId}/${photoId}.jpg`;
-    await this.storage.putPrivate(storageKey, photo.body, 'image/jpeg');
+    const thumbnailKey = `properties/${propertyId}/${photoId}-thumb.jpg`;
+    const files = [storageKey, thumbnailKey];
+    try {
+      await this.storage.putPrivate(storageKey, photo.body, 'image/jpeg');
+      await this.storage.putPrivate(
+        thumbnailKey,
+        photo.thumbnail,
+        'image/jpeg',
+      );
+    } catch (error) {
+      await this.listings.deleteFiles(files);
+      throw error;
+    }
 
     try {
       const result = await this.dataSource.transaction(async (manager) => {
@@ -89,6 +101,7 @@ export class PropertyPhotosService {
           id: photoId,
           propertyId,
           storageKey,
+          thumbnailKey,
           width: photo.width,
           height: photo.height,
           bytes: photo.body.length,
@@ -103,7 +116,7 @@ export class PropertyPhotosService {
       if (result.backToReview) await this.publicPhotos.unpublish(propertyId);
       return this.listings.getMine(userId, result.id);
     } catch (error) {
-      await this.listings.deleteFiles([storageKey]);
+      await this.listings.deleteFiles(files);
       throw error;
     }
   }
@@ -118,7 +131,7 @@ export class PropertyPhotosService {
     propertyId: string,
     photoId: string,
   ): Promise<MyListingDto> {
-    const { listingId, storageKey, backToReview } =
+    const { listingId, files, backToReview } =
       await this.dataSource.transaction(async (manager) => {
         const locked = await lockCurrentListingOfProperty(
           manager,
@@ -152,11 +165,11 @@ export class PropertyPhotosService {
         });
         return {
           listingId: locked.id,
-          storageKey: photo.storageKey,
+          files: photoFiles(photo),
           backToReview,
         };
       });
-    await this.listings.deleteFiles([storageKey]);
+    await this.listings.deleteFiles(files);
     if (backToReview) await this.publicPhotos.unpublish(propertyId);
     return this.listings.getMine(userId, listingId);
   }

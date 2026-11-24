@@ -250,6 +250,7 @@ half-filled; `missing` in every answer lists what still has to be filled in befo
 | --- | --- |
 | Upload a phone photo (JPEG) | 201; `property.photos` has it with a signed `url` (works for 15 minutes) and its stored size (at most 2048 px) |
 | Open the `url`, save the file, and check it with `exiftool <file>` (or any EXIF viewer) | no GPS, no camera make or model, no date: only the image size and type |
+| The thumbnail (T3.4): in psql `SELECT thumbnail_key FROM property_photos;`, then once the listing is live open `S3_PUBLIC_BASE_URL/<thumbnail_key>` | a 480 px JPEG, just as clean (`exiftool` shows no metadata) |
 | A portrait photo | stored upright |
 | A GIF, a PDF, or a text file renamed to `.jpg` | 400 `PHOTO_TYPE_NOT_ALLOWED` |
 | A file over 10 MB | 413 `PHOTO_TOO_LARGE` with `max` |

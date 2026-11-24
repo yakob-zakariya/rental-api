@@ -131,13 +131,17 @@ describe('admin: approve, reject, take down (e2e, T4.2)', () => {
     return listing;
   };
 
+  /** Every file of the property's photos: each photo, then its thumbnail (T3.4). */
   const keysOf = async (propertyId: string) =>
     (
-      await db.query<{ storage_key: string }[]>(
-        `SELECT storage_key FROM property_photos WHERE property_id = $1 ORDER BY position`,
+      await db.query<{ storage_key: string; thumbnail_key: string }[]>(
+        `SELECT storage_key, thumbnail_key FROM property_photos WHERE property_id = $1 ORDER BY position`,
         [propertyId],
       )
-    ).map((r) => r.storage_key);
+    ).flatMap((r) => [r.storage_key, r.thumbnail_key]);
+  /** The status of every file of `photos` photos (each with a thumbnail). */
+  const all = (status: number, photos = 3) =>
+    Array<number>(photos * 2).fill(status);
   /** HTTP status of each photo at its public URL, fetched with no credentials. */
   const publicStatus = async (propertyId: string) =>
     Promise.all(
@@ -181,7 +185,7 @@ describe('admin: approve, reject, take down (e2e, T4.2)', () => {
     it('pending_review → live: published, reviewed by, history and audit; the photos become public', async () => {
       const who = await lister();
       const listing = await inReview(who);
-      expect(await publicStatus(listing.propertyId)).toEqual([404, 404, 404]);
+      expect(await publicStatus(listing.propertyId)).toEqual(all(404));
 
       const { body } = await approve(moderator, listing.id, {
         version: listing.version,
@@ -210,7 +214,7 @@ describe('admin: approve, reject, take down (e2e, T4.2)', () => {
           details: { note: 'Photos match the description' },
         },
       ]);
-      expect(await publicStatus(listing.propertyId)).toEqual([200, 200, 200]);
+      expect(await publicStatus(listing.propertyId)).toEqual(all(200));
     });
 
     it('support may not decide (403); an app token gets 401', async () => {
@@ -420,7 +424,7 @@ describe('admin: approve, reject, take down (e2e, T4.2)', () => {
           },
         },
       ]);
-      expect(await publicStatus(listing.propertyId)).toEqual([404, 404, 404]);
+      expect(await publicStatus(listing.propertyId)).toEqual(all(404));
     });
 
     it('GUIDELINES with a lister note: 400 LISTER_NOTE_NOT_ALLOWED (decided 2026-11-24); without one, fine', async () => {
@@ -508,7 +512,7 @@ describe('admin: approve, reject, take down (e2e, T4.2)', () => {
     it('live → removed (staff_takedown): photos unpublished and the CDN purged for each', async () => {
       const who = await lister();
       const listing = await live(who);
-      expect(await publicStatus(listing.propertyId)).toEqual([200, 200, 200]);
+      expect(await publicStatus(listing.propertyId)).toEqual(all(200));
 
       const { body } = await takedown(moderator, listing.id, {
         reasonCode: 'GUIDELINES',
@@ -531,7 +535,7 @@ describe('admin: approve, reject, take down (e2e, T4.2)', () => {
         actor_type: 'admin',
       });
       expect(await audits('listing.takedown')).toHaveLength(1);
-      expect(await publicStatus(listing.propertyId)).toEqual([404, 404, 404]);
+      expect(await publicStatus(listing.propertyId)).toEqual(all(404));
       expect(cdn.purged.sort()).toEqual(
         (await keysOf(listing.propertyId))
           .map((k) => storage.publicUrl(k))
@@ -595,7 +599,7 @@ describe('admin: approve, reject, take down (e2e, T4.2)', () => {
         .send({ bedrooms: 3 })
         .expect(200);
 
-      expect(await publicStatus(listing.propertyId)).toEqual([404, 404, 404]);
+      expect(await publicStatus(listing.propertyId)).toEqual(all(404));
     });
 
     it('a rent change keeps them public (the listing stays live)', async () => {
@@ -608,7 +612,7 @@ describe('admin: approve, reject, take down (e2e, T4.2)', () => {
         .send({ monthlyRentBirr: 24000 })
         .expect(200);
 
-      expect(await publicStatus(listing.propertyId)).toEqual([200, 200, 200]);
+      expect(await publicStatus(listing.propertyId)).toEqual(all(200));
     });
 
     it('a new photo on a live listing sends it to review and unpublishes them all', async () => {
@@ -621,9 +625,7 @@ describe('admin: approve, reject, take down (e2e, T4.2)', () => {
         .attach('photo', photo, 'p.jpg')
         .expect(201);
 
-      expect(await publicStatus(listing.propertyId)).toEqual([
-        404, 404, 404, 404,
-      ]);
+      expect(await publicStatus(listing.propertyId)).toEqual(all(404, 4));
     });
 
     it('the lister closing a live listing unpublishes them (no CDN purge: only takedowns)', async () => {
@@ -636,7 +638,7 @@ describe('admin: approve, reject, take down (e2e, T4.2)', () => {
         .send({ reason: 'rented_in_app' })
         .expect(200);
 
-      expect(await publicStatus(listing.propertyId)).toEqual([404, 404, 404]);
+      expect(await publicStatus(listing.propertyId)).toEqual(all(404));
       expect(cdn.purged).toEqual([]);
     });
 
@@ -653,7 +655,7 @@ describe('admin: approve, reject, take down (e2e, T4.2)', () => {
         .expect(200);
 
       expect(body.status).toBe('live');
-      expect(await publicStatus(listing.propertyId)).toEqual([200, 200, 200]);
+      expect(await publicStatus(listing.propertyId)).toEqual(all(200));
     });
   });
 });
