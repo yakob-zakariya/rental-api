@@ -75,6 +75,7 @@ npm run start:dev             # run the API
 npm run test                  # unit tests (Vitest)
 npm run test:e2e              # end-to-end tests (Vitest; needs Docker up, uses rental_test + Redis db 1)
 npm run lint                  # oxlint
+npm run typecheck             # tsc --noEmit over src/ and test/ (the build and Vitest skip test types)
 npm run format                # Prettier
 npm run migration:generate -- src/database/migrations/<Name>   # from entity changes
 npm run migration:create -- src/database/migrations/<Name>     # empty, for hand-written SQL
