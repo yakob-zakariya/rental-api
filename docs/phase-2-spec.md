@@ -190,7 +190,7 @@ Rows are never changed (a trigger refuses UPDATE); deleting a draft deletes its 
 
 ### Changes to Phase 1 tables and code
 - `admin_actions`: new action types `listing.approve`, `listing.reject`, `listing.takedown`,
-  `neighbourhood.create`, `neighbourhood.update`, `neighbourhood.deactivate`,
+  `listing.reveal_lister_phone` (T4.1), `neighbourhood.create`, `neighbourhood.update`, `neighbourhood.deactivate`,
   `neighbourhood.reactivate`; new target types `listing`, `neighbourhood`. The `details`
   allow-list gains `listerNote` and, for renames, `oldNameEn`, `newNameEn`, `oldNameAm`,
   `newNameAm` (all free text, so the S1 ID-number check applies).
@@ -468,10 +468,15 @@ Any other transition: 409 `INVALID_LISTING_STATE`. **Active** means `pending_rev
 
 ### Endpoints
 - `GET /admin/listings?status=pending_review&limit=&after=` — queue, oldest `submitted_at` first
-  (any staff role).
+  (any staff role). Another status on request (e.g. `live`, to find one to take down); **drafts
+  are never listed** (decided 2026-11-24: unfinished and private), though one can be opened by id.
 - `GET /admin/listings/:id` — the listing and property, the exact location and landmark, photos,
   flags (R1), the lister's verified full name, verification status, account status and other
-  listings, and the listing's history.
+  listings, and the listing's history. **Not the lister's phone number.**
+- `POST /admin/listings/:id/reveal-lister-phone { note? }` — moderator+: returns the lister's
+  phone, for a reviewer who wants to call about a suspicious listing. Every reveal writes an
+  `admin_actions` row (who, which listing, the note; never the number) in the same transaction
+  (decided 2026-11-24).
 - `POST /admin/listings/:id/approve { version, note? }` — moderator+.
 - `POST /admin/listings/:id/reject { version, reasonCode, listerNote?, note }` — moderator+.
 - `POST /admin/listings/:id/takedown { reasonCode, listerNote?, note }` — moderator+.
@@ -480,14 +485,21 @@ Any other transition: 409 `INVALID_LISTING_STATE`. **Active** means `pending_rev
 
 ### Rules
 - **R1 Flags on the review page** (they never block anything by themselves):
-  - `PHOTO_MATCH` — a photo matches another lister's photo (P3), with a link to that listing;
+  - `PHOTO_MATCH` — a photo matches another lister's photo (P3), with a link to that listing.
+    Hashing only compares photos on our platform; for a suspicious listing the reviewer also
+    runs a reverse image search (Google Lens) to catch photos copied from elsewhere (reviewer
+    checklist, decided 2026-11-24);
   - `MANY_ACTIVE_LISTINGS` — the lister has more than 2 active listings, in any area, counting
     this one (decided 2026-11-09);
   - `UNLISTED_NEIGHBOURHOOD` — the lister typed a neighbourhood that isn't in our list (G1), with
     the typed name and an "add neighbourhood" action (G7);
-  - `PHONE_IN_TEXT` — the description, landmark or unlisted neighbourhood name contains
-    something that looks like a phone
-    number (the phone is meant to be revealed only on acceptance).
+  - `CONTACT_IN_TEXT` (widened from `PHONE_IN_TEXT`, decided 2026-11-24) — the description,
+    landmark or unlisted neighbourhood name contains contact details that would bypass contact
+    requests: an Ethiopian mobile number, a Telegram username (`@name`) or link (`t.me/…`),
+    an email address or another link. Brokers in Addis pull people off-platform this way,
+    mostly through Telegram. The details say which kind was found in which field. A hint, not a
+    guarantee: deliberately disguised details (digits as words, "O" for zero, "t . me") get
+    through.
 - **R2** S1–S3 apply: every change is audited in the same transaction, `support` is read-only,
   admin and app tokens don't cross. Only `pending_review` listings can be approved or rejected:
   the row is locked; a second decision is 409 `ALREADY_DECIDED`, other states 409

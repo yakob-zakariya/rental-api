@@ -3,8 +3,11 @@ import { ConfigService } from '@nestjs/config';
 import { MulterModule } from '@nestjs/platform-express';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import type { EnvironmentVariables } from '../../config/env.validation.js';
+import { AdminModule } from '../admin/admin.module.js';
 import { AreasModule } from '../areas/areas.module.js';
 import { PhotosModule } from '../photos/photos.module.js';
+import { ListingsAdminController } from './admin/listings-admin.controller.js';
+import { ListingsAdminService } from './admin/listings-admin.service.js';
 import { ListingHistory } from './listing-history.entity.js';
 import { Listing } from './listing.entity.js';
 import { ListingsController } from './listings.controller.js';
@@ -25,6 +28,8 @@ import { PropertyPhotosService } from './property-photos.service.js';
     AreasModule,
     // Storage, re-encoding and the photo rows (P1, P2).
     PhotosModule,
+    // The staff guards and the audit service for the review endpoints (section 8, S1).
+    AdminModule,
     // Uploads stay in memory (one photo, at most PHOTO_MAX_BYTES), are re-encoded, then stored.
     // Multer has no size limit of its own, so every limit is set here: one file, no other fields.
     MulterModule.registerAsync({
@@ -38,9 +43,14 @@ import { PropertyPhotosService } from './property-photos.service.js';
       }),
     }),
   ],
-  controllers: [ListingsController, PropertyPhotosController],
+  controllers: [
+    ListingsController,
+    PropertyPhotosController,
+    ListingsAdminController,
+  ],
   providers: [
     ListingsService,
+    ListingsAdminService,
     PropertyPhotosService,
     PhotoUploadErrorFilter,
     { provide: PhotoCounter, useClass: DbPhotoCounter },

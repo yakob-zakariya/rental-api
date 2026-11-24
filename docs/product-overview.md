@@ -283,6 +283,10 @@ Things that are fine for local development but must be settled before (or when) 
 - **Verification start holds a DB connection during the Didit call (up to 10 s); review pool size and
   consider moving the Didit call outside the transaction before traffic grows.**
 - **Add two-factor authentication (TOTP) for staff accounts before production.**
+- **Log staff reads of listing details** (who opened which listing, when) **before giving anyone
+  other than the project owner staff access** (decided 2026-11-24). The detail shows the exact location
+  and the verified full name; today only changes are audited, plus each reveal of a lister's
+  phone.
 - **The production DB user must not have TRUNCATE (or UPDATE/DELETE) on admin_actions.**
 - **Test the production /docs HTTP Basic login end to end once a real SMS provider allows
   NODE_ENV=production.**

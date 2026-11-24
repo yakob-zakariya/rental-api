@@ -176,6 +176,22 @@ Staff manage the list behind `GET /areas` (spec G8). Nothing is ever deleted.
 | `DELETE /admin/neighbourhoods/<id>` | 404 (there is no delete) |
 | Any change as support | 403 `INSUFFICIENT_ROLE` |
 
+### Listing review (read: any staff role; reveal phone: moderator+)
+
+Submit a listing first (app token, 3 photos), then with the admin token:
+
+| Try | Expect |
+| --- | --- |
+| `GET /admin/listings` | the listings in review, oldest submission first, with a summary, `photoCount`, a signed `coverUrl` and `flags` |
+| `… ?status=live` | live ones instead; `?status=draft` → 400 (drafts are never listed) |
+| `GET /admin/listings/<id>` | everything: the exact `location` and `landmark`, photos (signed links), the lister's verified name and statuses, other listings, the history; **no phone number** |
+| A listing whose description says `Telegram @AddisHomes` or `t.me/addishomes`, or `0911 23 45 67` | `flags`: `CONTACT_IN_TEXT` with `{ field: "description", kinds: ["telegram"] }` (or `phone`, `email`, `url`) |
+| A lister with 3 listings in review, live or stale | `MANY_ACTIVE_LISTINGS`, `activeListings: 3` |
+| "My neighbourhood isn't listed" (`unlistedNeighbourhoodName`) | `UNLISTED_NEIGHBOURHOOD` with the typed name |
+| `POST /admin/listings/<id>/reveal-lister-phone { "note": "Calling to check" }` as moderator | 200 `{ phone }`; `GET /admin/actions` shows `listing.reveal_lister_phone` with the note (no number) |
+| The same as support | 403 `INSUFFICIENT_ROLE` |
+| The app token on `/admin/listings` | 401 |
+
 ## Listings: drafts (app token)
 
 Signed in with the app token (verification isn't needed to draft, L1). A draft may be

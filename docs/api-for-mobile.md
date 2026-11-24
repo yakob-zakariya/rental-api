@@ -282,6 +282,12 @@ clears it (for amenities, send `[]`).
 Text is trimmed. Lengths count characters the way the server does (an emoji counts as one). The
 status, version and ids can't be sent: they're rejected as unknown fields.
 
+**A tip on the form, near the description** (decided 2026-11-24): *"Tenants contact you through
+the app. Don't put your phone number, Telegram or links in the description."* Show it as a
+general tip only, always the same. **The app must not check the text as the lister types, or
+tell them what was found**: staff see such details on review, and a live check would only teach
+people how to hide them.
+
 ### `POST /listings`
 
 Body: any of the fields above (`{}` is fine). → `201` with the listing (below). Errors:

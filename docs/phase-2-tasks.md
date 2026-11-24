@@ -68,14 +68,21 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
       `test/fixtures/phone-photo-gps.jpg`). Photo changes follow L5 like any field that needs review: +1 `version`;
       a live or stale listing goes back to review, an expired one gets `needs_review`.
 - [ ] **T3.3 Photo hashing.** Adds the `phash` column to `property_photos` (T3.2 created the
-      table without it). Choose the library after reading its docs; test it on resized and
+      table without it), and the `PHOTO_MATCH` flag to `reviewFlags()` (T4.1 built the other
+      three). The experiment script is stashed (`git stash list`) until the room photos arrive. Choose the library after reading its docs; test it on resized and
       recompressed copies and on different photos; set `PHOTO_HASH_MAX_DISTANCE` from the results;
       match only other listers' photos (P3); tests.
 
 ## Step 4 — Staff review
 
-- [ ] **T4.1 Queue and detail.** `GET /admin/listings`, `GET /admin/listings/:id` with the four
-      flags (R1), the exact point, landmark and history; tests.
+- [x] **T4.1 Queue and detail.** `GET /admin/listings`, `GET /admin/listings/:id` with the four
+      flags (R1), the exact point, landmark and history; tests. The reviewer checklist (shown on
+      the review page, T4.3) includes: for a suspicious listing, run a reverse image search
+      (Google Lens) on its photos, since photos copied from outside the platform can't be caught
+      by our hashing (added 2026-11-24). Done 2026-11-24: three flags (`MANY_ACTIVE_LISTINGS`,
+      `UNLISTED_NEIGHBOURHOOD`, `CONTACT_IN_TEXT`, widened from phone numbers to Telegram,
+      email and links); `PHOTO_MATCH` comes with T3.3. Drafts never listed. The phone only
+      through `POST /admin/listings/:id/reveal-lister-phone` (moderator+, audited).
 - [ ] **T4.2 Approve, reject, take down.** R2–R6, reason codes, `version` check, `listerNote`
       added to the audit allow-list (S1); tests. Approving publishes the listing's photos
       (`PhotoStorage.publish`); a takedown unpublishes them and purges the CDN cache for them

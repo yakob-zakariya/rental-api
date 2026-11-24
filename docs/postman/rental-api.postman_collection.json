@@ -1301,6 +1301,155 @@
           "response": []
         },
         {
+          "name": "Listing review queue",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/listings?status=pending_review&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "listings"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "pending_review"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Any staff role. Listings in `status` (default `pending_review`), oldest submission first; never drafts. Each row: summary, `photoCount`, a signed `coverUrl`, the lister's verified name and the flag codes (`MANY_ACTIVE_LISTINGS`, `UNLISTED_NEIGHBOURHOOD`, `CONTACT_IN_TEXT`). Page with `after=<nextCursor>`. Saves the first row as `adminListingId`.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const first = pm.response.json().items[0];",
+                  "if (first) pm.environment.set('adminListingId', first.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listing review detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/listings/{{adminListingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "listings",
+                "{{adminListingId}}"
+              ]
+            },
+            "description": "Any staff role. Everything the reviewer needs: exact location and landmark, photos as signed links (15 min), flags with details, the lister (verified name, verification and account status; **no phone**), their other listings, and the history.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reveal lister phone",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/listings/{{adminListingId}}/reveal-lister-phone",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "listings",
+                "{{adminListingId}}",
+                "reveal-lister-phone"
+              ]
+            },
+            "description": "Moderator+. Returns `{ phone }` and records the reveal in admin_actions (who, which listing, the note; never the number). Support: 403 `INSUFFICIENT_ROLE`.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Calling to check the photos\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "App token on an admin route (expected failure)",
           "request": {
             "method": "GET",
