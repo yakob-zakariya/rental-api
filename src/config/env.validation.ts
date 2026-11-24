@@ -217,6 +217,75 @@ export class EnvironmentVariables {
   @Min(1, { message: '$property must be at least 1' })
   @IsInt({ message: '$property must be an integer' })
   LISTING_MAX_ACTIVE_PER_USER: number = 10;
+
+  // --- Photo storage (spec P1, P5; T3.1) ---
+  // S3-compatible: SeaweedFS in development (docker-compose.yml), R2 or similar in production.
+  @IsDefined(required)
+  @IsUrl(
+    {
+      protocols: ['http', 'https'],
+      require_protocol: true,
+      require_tld: false,
+    },
+    { message: '$property must be an http(s):// URL' },
+  )
+  S3_ENDPOINT: string;
+
+  // R2 expects "auto"; SeaweedFS ignores it.
+  @IsString()
+  S3_REGION: string = 'auto';
+
+  @IsDefined(required)
+  @IsString()
+  S3_ACCESS_KEY_ID: string;
+
+  @IsDefined(required)
+  @IsString()
+  S3_SECRET_ACCESS_KEY: string;
+
+  // Every photo, served to the lister and staff through signed links (P5).
+  @IsDefined(required)
+  @IsString()
+  S3_PRIVATE_BUCKET: string;
+
+  // Copies of live listings' photos only, readable by anyone (P5). R2 can make only a whole bucket
+  // public, so this is a second bucket (decided 2026-11-24).
+  @IsDefined(required)
+  @IsString()
+  S3_PUBLIC_BUCKET: string;
+
+  // Where the public bucket is served from: its custom domain in production.
+  @IsDefined(required)
+  @IsUrl(
+    {
+      protocols: ['http', 'https'],
+      require_protocol: true,
+      require_tld: false,
+    },
+    { message: '$property must be an http(s):// URL' },
+  )
+  S3_PUBLIC_BASE_URL: string;
+
+  // SeaweedFS needs path-style URLs; R2 accepts them.
+  @Transform(toBoolean)
+  @IsBoolean({ message: '$property must be true or false' })
+  S3_FORCE_PATH_STYLE: boolean = true;
+
+  // How long a private photo's signed link works (P5: short-lived; 15 minutes, decided
+  // 2026-11-24). S3 signatures allow at most 7 days.
+  @Transform(toNumber)
+  @Min(1, { message: '$property must be between 1 and 604800' })
+  @Max(604800, { message: '$property must be between 1 and 604800' })
+  @IsInt({ message: '$property must be an integer' })
+  PHOTO_SIGNED_URL_TTL_SECONDS: number = 900;
+
+  // Cache-Control max-age on public photos. Moderate on purpose (1 day, decided 2026-11-24): a
+  // photo stays reachable from phone and CDN caches this long after it's unpublished, e.g. after
+  // a staff takedown (which also purges the CDN cache, T4.2).
+  @Transform(toNumber)
+  @Min(0, { message: '$property must be 0 or more seconds' })
+  @IsInt({ message: '$property must be an integer' })
+  PHOTO_PUBLIC_CACHE_MAX_AGE_SECONDS: number = 86400;
 }
 
 // Variables whose .env.example value is a placeholder that production must replace.
@@ -230,6 +299,8 @@ const PLACEHOLDER_CHECKED = [
   'DIDIT_WEBHOOK_SECRET',
   'DIDIT_WORKFLOW_ID',
   'APP_VERIFICATION_CALLBACK_URL',
+  'S3_ACCESS_KEY_ID',
+  'S3_SECRET_ACCESS_KEY',
 ] as const satisfies readonly (keyof EnvironmentVariables)[];
 
 /**
@@ -265,7 +336,17 @@ export function validateEnv(
     );
   }
 
+  // P5: public and private photos must never share a bucket.
+  if (env.S3_PRIVATE_BUCKET && env.S3_PRIVATE_BUCKET === env.S3_PUBLIC_BUCKET) {
+    problems.push('S3_PUBLIC_BUCKET must differ from S3_PRIVATE_BUCKET');
+  }
+
   if (env.NODE_ENV === NodeEnv.Production) {
+    for (const key of ['S3_ENDPOINT', 'S3_PUBLIC_BASE_URL'] as const) {
+      if (env[key] && !env[key].startsWith('https://')) {
+        problems.push(`${key} must be an https:// URL in production`);
+      }
+    }
     for (const key of PLACEHOLDER_CHECKED) {
       if (env[key]?.toLowerCase().includes(PLACEHOLDER_MARKER)) {
         problems.push(`${key} still has a placeholder value from .env.example`);

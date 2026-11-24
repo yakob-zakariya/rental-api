@@ -34,7 +34,8 @@ in a later phase, stop and ask.
 - **Identity verification (KYC):** Didit (https://docs.didit.me) — ID document + passive liveness + face match.
   Accepted documents: Fayda national ID (primary) and passports only.
 - **Mobile app:** Flutter, in a separate repo (`rental-app`), not this one
-- **Local infrastructure:** Docker Compose (Postgres + PostGIS, Redis)
+- **Local infrastructure:** Docker Compose (Postgres + PostGIS, Redis, SeaweedFS for S3-compatible
+  photo storage; MinIO no longer publishes community images)
 - **API docs:** `@nestjs/swagger` (Swagger UI also serves as the temporary admin UI in Phase 1)
 
 ## Repository layout
@@ -58,6 +59,7 @@ src/
     verification/    # Didit client, webhook, state machine, background jobs
     admin/           # staff auth, roles, manual review, bans, audit log
     areas/           # Addis Ababa sub-cities and neighbourhoods (seeded), GET /areas, staff management
+    photos/          # PhotoStorage (S3-compatible: private + public bucket), upload pipeline
     listings/        # properties, listings, listing history (the listing state machine, spec L9)
 test/               # e2e specs; global-setup.ts recreates + migrates rental_test each run
 docs/
@@ -70,7 +72,7 @@ compiled `dist/database/data-source.js` (ts-node/tsx are unreliable under ESM an
 metadata). The app needs Postgres up to start.
 
 ```
-docker compose up -d --wait   # start Postgres + Redis (waits until healthy)
+docker compose up -d --wait   # start Postgres + Redis + SeaweedFS (waits until healthy)
 npm run start:dev             # run the API
 npm run test                  # unit tests (Vitest)
 npm run test:e2e              # end-to-end tests (Vitest; needs Docker up, uses rental_test + Redis db 1)

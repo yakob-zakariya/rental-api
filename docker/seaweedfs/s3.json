@@ -1,0 +1,18 @@
+{
+  "identities": [
+    {
+      "name": "rental-api-dev",
+      "credentials": [
+        {
+          "accessKey": "change-me-dev-access-key",
+          "secretKey": "change-me-dev-secret-key-local-only"
+        }
+      ],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    },
+    {
+      "name": "anonymous",
+      "actions": ["Read:rental-photos-public", "Read:rental-test-photos-public"]
+    }
+  ]
+}

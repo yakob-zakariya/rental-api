@@ -238,8 +238,9 @@ Order of work and the full launch scope: `roadmap.md`.
   prompts and chat messages
 - **SMS:** for OTP only. Local SMS gateway behind an interface; logged to console in development
 - **Photo storage:** S3-compatible object storage behind an interface (decided 2026-11-09);
-  MinIO in development; the production provider is chosen before deploying (Cloudflare R2 in the
-  comparison)
+  SeaweedFS in development (MinIO no longer publishes community images, 2026-11-24); a private
+  bucket for every photo and a public one for live listings' photos; the production provider is
+  chosen before deploying (Cloudflare R2 in the comparison)
 - **Development webhooks:** ngrok (fixed URL) or Cloudflare quick tunnel; plus a background job
   that polls Didit for stuck sessions, so webhooks are not a single point of failure
 
@@ -295,7 +296,16 @@ Things that are fine for local development but must be settled before (or when) 
 - **Swagger in production.** Off unless `SWAGGER_ENABLED=true`; if enabled, the `/docs` page must
   be behind staff auth first (T3.1).
 - **Choose the production photo storage.** Compare S3-compatible providers, including Cloudflare
-  R2, on storage and egress cost; set the bucket's public part to live photos only.
+  R2, on storage and egress cost. Then (spec P5):
+  - create **two buckets**: private (every photo, never public) and public (live listings'
+    photos only); put the public one behind a **custom domain** (R2's `r2.dev` URL is
+    rate-limited and for testing only) and set `S3_PUBLIC_BASE_URL` to it;
+  - an API key scoped to those two buckets only;
+  - check on the provider that `CopyObject` **between the two buckets** works (our publish step),
+    and that a stored photo comes back byte for byte (the checksum settings in `s3-client.ts`);
+  - **purge the CDN (Cloudflare) cache for a listing's photos on a staff takedown** (T4.2):
+    public photos are cached for up to a day (`PHOTO_PUBLIC_CACHE_MAX_AGE_SECONDS`), so removing
+    them from the bucket isn't enough. Needs a Cloudflare API token allowed to purge that zone.
 - **Firebase for production.** A production Firebase project (or the same one, checked), the
   service-account JSON on the server only, and `PUSH_PROVIDER=fcm` (the app refuses to start in
   production with `console`).

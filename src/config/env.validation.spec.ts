@@ -20,6 +20,12 @@ const validEnv = (): Record<string, string> => ({
   DIDIT_WEBHOOK_SECRET: 'didit-webhook-secret',
   DIDIT_WORKFLOW_ID: 'didit-workflow-id',
   APP_VERIFICATION_CALLBACK_URL: 'https://app.example.et/verification/done',
+  S3_ENDPOINT: 'https://account.r2.cloudflarestorage.com',
+  S3_ACCESS_KEY_ID: 's3-access-key',
+  S3_SECRET_ACCESS_KEY: 's3-secret-key',
+  S3_PRIVATE_BUCKET: 'photos-private',
+  S3_PUBLIC_BUCKET: 'photos-public',
+  S3_PUBLIC_BASE_URL: 'https://photos.example.et',
 });
 
 const REQUIRED = Object.keys(validEnv());
@@ -52,6 +58,10 @@ describe('validateEnv', () => {
     expect(env.DIDIT_BASE_URL).toBe('https://verification.didit.me');
     expect(env.MAX_DRAFT_LISTINGS).toBe(10);
     expect(env.LISTING_MAX_ACTIVE_PER_USER).toBe(10);
+    expect(env.S3_REGION).toBe('auto');
+    expect(env.S3_FORCE_PATH_STYLE).toBe(true);
+    expect(env.PHOTO_SIGNED_URL_TTL_SECONDS).toBe(900);
+    expect(env.PHOTO_PUBLIC_CACHE_MAX_AGE_SECONDS).toBe(86400);
   });
 
   it('converts numbers and booleans from strings', () => {
@@ -109,6 +119,12 @@ describe('validateEnv', () => {
     ['MAX_DRAFT_LISTINGS', '2.5', 'must be an integer'],
     ['LISTING_MAX_ACTIVE_PER_USER', '0', 'must be at least 1'],
     ['LISTING_MAX_ACTIVE_PER_USER', 'ten', 'must be an integer'],
+    ['S3_ENDPOINT', 'localhost:8333', 'must be an http(s):// URL'],
+    ['S3_PUBLIC_BASE_URL', 'photos', 'must be an http(s):// URL'],
+    ['S3_FORCE_PATH_STYLE', 'yes', 'must be true or false'],
+    ['PHOTO_SIGNED_URL_TTL_SECONDS', '0', 'must be between 1 and 604800'],
+    ['PHOTO_SIGNED_URL_TTL_SECONDS', '604801', 'must be between 1 and 604800'],
+    ['PHOTO_PUBLIC_CACHE_MAX_AGE_SECONDS', '-1', 'must be 0 or more seconds'],
     ['SMS_PROVIDER', 'twilio', 'must be one of console'],
     [
       'DIDIT_BASE_URL',
@@ -195,6 +211,9 @@ describe('validateEnv', () => {
       JWT_ACCESS_SECRET: 'change-me-jwt-access-secret-0123456789',
       DIDIT_API_KEY: 'change-me-didit-api-key',
       APP_VERIFICATION_CALLBACK_URL: 'https://example.com/change-me',
+      // The local SeaweedFS keys (docker/seaweedfs/s3.json) are placeholders on purpose.
+      S3_ACCESS_KEY_ID: 'change-me-dev-access-key',
+      S3_SECRET_ACCESS_KEY: 'change-me-dev-secret-key-local-only',
     });
 
     it('rejects them in production', () => {
@@ -207,10 +226,41 @@ describe('validateEnv', () => {
       expect(message).toContain(
         'APP_VERIFICATION_CALLBACK_URL still has a placeholder value',
       );
+      expect(message).toContain(
+        'S3_ACCESS_KEY_ID still has a placeholder value',
+      );
+      expect(message).toContain(
+        'S3_SECRET_ACCESS_KEY still has a placeholder value',
+      );
     });
 
     it.each(['development', 'test'])('allows them in %s', (nodeEnv) => {
       expect(() => validateEnv(withPlaceholders(nodeEnv))).not.toThrow();
+    });
+  });
+
+  describe('photo storage (P5)', () => {
+    it('refuses one bucket for both public and private photos', () => {
+      expect(
+        errorOf({ ...validEnv(), S3_PUBLIC_BUCKET: 'photos-private' }),
+      ).toContain('S3_PUBLIC_BUCKET must differ from S3_PRIVATE_BUCKET');
+    });
+
+    it('needs https endpoints in production, allows http locally', () => {
+      const local = {
+        ...validEnv(),
+        S3_ENDPOINT: 'http://localhost:8333',
+        S3_PUBLIC_BASE_URL: 'http://localhost:8333/photos-public',
+      };
+      expect(() => validateEnv(local)).not.toThrow();
+
+      const message = errorOf({ ...local, NODE_ENV: 'production' });
+      expect(message).toContain(
+        'S3_ENDPOINT must be an https:// URL in production',
+      );
+      expect(message).toContain(
+        'S3_PUBLIC_BASE_URL must be an https:// URL in production',
+      );
     });
   });
 

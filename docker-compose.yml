@@ -34,6 +34,28 @@ services:
       timeout: 5s
       retries: 10
 
+  # S3-compatible object storage for photos (spec P1, T3.1). SeaweedFS, not MinIO: MinIO no longer
+  # publishes community images. `weed mini` runs every SeaweedFS part in one container; S3 is on
+  # 8333. Dev-only keys and the anonymous read rule for the public buckets are in s3.json.
+  s3:
+    image: chrislusf/seaweedfs:4.52
+    restart: unless-stopped
+    command: ['mini', '-dir=/data', '-s3.config=/etc/seaweedfs/s3.json']
+    environment:
+      # Created at startup if missing (development buckets; tests create their own).
+      S3_BUCKET: rental-photos-private,rental-photos-public
+    ports:
+      - '127.0.0.1:8333:8333'
+    volumes:
+      - s3_data:/data
+      - ./docker/seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'nc -z 127.0.0.1 8333']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
 volumes:
   pg_data:
   redis_data:
+  s3_data:

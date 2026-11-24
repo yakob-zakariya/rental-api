@@ -6,7 +6,10 @@ every new endpoint gets a step here.
 
 ## Setup
 
-1. `docker compose up -d --wait`
+1. `docker compose up -d --wait` (Postgres, Redis and SeaweedFS, the local photo storage: S3 API
+   on `localhost:8333`, with the two development buckets created on start). `.env` needs the
+   `S3_…` and `PHOTO_…` lines from `.env.example` (the development keys match
+   `docker/seaweedfs/s3.json`); without them the API refuses to start.
 2. `.env` has real **sandbox** Didit values (never commit them):
    - `DIDIT_API_KEY`: the "yakobRental (Sandbox)" app's key
    - `DIDIT_WORKFLOW_ID=5d5368e7-3151-4cd6-b92d-d3efd0b4b00b` ("Free KYC")

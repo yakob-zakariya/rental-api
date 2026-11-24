@@ -324,7 +324,8 @@ Any other transition: 409 `INVALID_LISTING_STATE`. **Active** means `pending_rev
 
 - **P1** Accepted: JPEG, PNG, WebP, at most `PHOTO_MAX_BYTES` each, at most 12 per property
   (409 `TOO_MANY_PHOTOS`). Files go to S3-compatible object storage behind a `PhotoStorage`
-  interface (MinIO in Docker Compose for development; the production provider is chosen before
+  interface (SeaweedFS in Docker Compose for development, decided 2026-11-24 because MinIO no
+  longer publishes community images; the production provider is chosen before
   deploying, with Cloudflare R2 in the comparison).
 - **P2** Every upload is **re-encoded** (resized to at most `PHOTO_MAX_DIMENSION` pixels, saved as
   JPEG) and **all metadata is removed**, including EXIF GPS. Only the re-encoded file is stored.
@@ -338,7 +339,18 @@ Any other transition: 409 `INVALID_LISTING_STATE`. **Active** means `pending_rev
   A delete that would leave a submitted listing with fewer than 3 photos is refused (409
   `NOT_ENOUGH_PHOTOS`).
 - **P5** Photos of a `live` listing are served from public URLs. All other photos are visible only
-  to the lister and staff, through short-lived signed links.
+  to the lister and staff, through short-lived signed links (15 minutes,
+  `PHOTO_SIGNED_URL_TTL_SECONDS`).
+  - **Two buckets** (decided 2026-11-24; R2 can make only a whole bucket public, with no object
+    ACLs or bucket policies): the private bucket holds every photo; the public bucket holds
+    copies of live listings' photos only, added when a listing goes live and removed when it
+    stops being live (`PhotoStorage.publish` / `unpublish`).
+  - **Caches** (decided 2026-11-24): public photos carry `Cache-Control: public, max-age=86400`
+    (`PHOTO_PUBLIC_CACHE_MAX_AGE_SECONDS`, 1 day). Removing a photo from the public bucket doesn't
+    reach copies already in phone or CDN caches: they stay reachable until their max-age runs
+    out. That's acceptable for ordinary changes; for a **staff takedown** (R5) the CDN cache for
+    the listing's photos is purged as well (T4.2, deployment checklist). Private photos carry
+    `Cache-Control: private`, so no shared cache keeps them.
 
 ## 5. Location, browse and search
 
@@ -483,12 +495,16 @@ later.
 ```
 PUSH_PROVIDER=console              # console | fcm
 FCM_SERVICE_ACCOUNT_FILE=          # path to the Firebase service-account JSON; never committed
-S3_ENDPOINT=http://localhost:9000  # MinIO in development
+S3_ENDPOINT=http://localhost:8333  # SeaweedFS in development
 S3_REGION=auto
-S3_BUCKET=rental-photos
 S3_ACCESS_KEY_ID=
 S3_SECRET_ACCESS_KEY=
-S3_PUBLIC_BASE_URL=                # where public (live) photos are served from
+S3_PRIVATE_BUCKET=rental-photos-private  # every photo (P5)
+S3_PUBLIC_BUCKET=rental-photos-public    # copies of live listings' photos only (P5)
+S3_PUBLIC_BASE_URL=                # where the public bucket is served from (its custom domain)
+S3_FORCE_PATH_STYLE=true
+PHOTO_SIGNED_URL_TTL_SECONDS=900   # P5: private photos' signed links
+PHOTO_PUBLIC_CACHE_MAX_AGE_SECONDS=86400  # P5: Cache-Control on public photos
 PHOTO_MAX_BYTES=10485760           # 10 MB per upload
 PHOTO_MAX_DIMENSION=2048           # longest side after re-encoding
 PHOTO_HASH_MAX_DISTANCE=           # Hamming distance for a match; set after testing (P3)
@@ -522,7 +538,7 @@ a resized and recompressed copy of another lister's photo is a match, the same l
 G1–G8 (results and distances come from `approx_location`; the exact point and the landmark
 appear only for the lister and staff), F1–F6 (with the clock moved, and the job run twice),
 N1–N5, R1–R6, the ban and unban effects (L8), and the audit rows. Use a fake `PushSender` and
-MinIO or a fake `PhotoStorage`; tests never call FCM.
+the local SeaweedFS (its own test buckets) or a fake `PhotoStorage`; tests never call FCM.
 
 ## 12. Decisions (2026-11-09)
 
@@ -581,7 +597,8 @@ MinIO or a fake `PhotoStorage`; tests never call FCM.
 - **Neighbourhood management (2026-11-09):** the reviewed list is seeded as it is; staff add,
   rename (English and Amharic) and deactivate neighbourhoods (hidden from the picker, existing
   listings keep them); never hard-deleted; all audited. → G7, G8
-- **T-1** S3-compatible storage, MinIO for development, Cloudflare R2 in the production
+- **T-1** S3-compatible storage, MinIO for development (changed 2026-11-24 to SeaweedFS: MinIO
+  stopped publishing community images, and two buckets for P5), Cloudflare R2 in the production
   comparison. **T-2** The review page is one static page. **T-3** "Rented" without picking the
   tenant until Phase 3. **T-4** You create the Firebase project; Claude gives you the exact setup
   steps at that task.

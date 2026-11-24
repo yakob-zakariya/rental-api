@@ -5,7 +5,7 @@ Spec: `docs/phase-2-spec.md`. One task at a time, each with a plan first and tes
 `docs/manual-testing.md`, the Postman collection and `docs/api-for-mobile.md`. After each task:
 a detailed explanation of how it works and why (CLAUDE.md "Current mode").
 
-Before writing integration code, read the real docs: the AWS SDK v3 S3 client and MinIO, `sharp`,
+Before writing integration code, read the real docs: the AWS SDK v3 S3 client and SeaweedFS, `sharp`,
 the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
 
 ## Step 0 — Inputs from you
@@ -54,10 +54,12 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
 
 ## Step 3 — Photos
 
-- [ ] **T3.1 Storage.** `PhotoStorage` interface, the S3-compatible implementation, MinIO in
+- [x] **T3.1 Storage.** `PhotoStorage` interface, the S3-compatible implementation, MinIO in
       Docker Compose (with a healthcheck, like Postgres and Redis), public URLs for live photos and
       signed links otherwise (P5), new env variables in `.env.example` and config validation;
-      tests against MinIO.
+      tests against MinIO. Done 2026-11-24 with SeaweedFS instead of MinIO (no more community
+      images) and two buckets (R2 can only make a whole bucket public); public photos cached
+      1 day.
 - [ ] **T3.2 Upload pipeline.** Upload, delete, reorder; type and size checks, at most 12, the
       3-photo floor on delete (P1, P4); re-encoding and removing all metadata (P2); tests,
       including a JPEG with EXIF GPS. Replace `NoPhotosYet` (T2.3) with a count of
@@ -72,7 +74,10 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
 - [ ] **T4.1 Queue and detail.** `GET /admin/listings`, `GET /admin/listings/:id` with the four
       flags (R1), the exact point, landmark and history; tests.
 - [ ] **T4.2 Approve, reject, take down.** R2–R6, reason codes, `version` check, `listerNote`
-      added to the audit allow-list (S1); tests.
+      added to the audit allow-list (S1); tests. Approving publishes the listing's photos
+      (`PhotoStorage.publish`); a takedown unpublishes them and purges the CDN cache for them
+      (P5: cached copies otherwise live on for up to a day). Every other move out of `live`
+      unpublishes too.
 - [ ] **T4.3 Review web page.** The static page at `/admin/review`, including "add
       neighbourhood" for an unlisted one, with `propertyId` on `POST /admin/neighbourhoods`
       moving that property to the new neighbourhood and clearing its typed name (G7); checked by

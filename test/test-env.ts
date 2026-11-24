@@ -39,4 +39,17 @@ export const TEST_ENV = {
 
   MAX_DRAFT_LISTINGS: '10',
   LISTING_MAX_ACTIVE_PER_USER: '10',
+
+  // The local SeaweedFS (docker-compose.yml); its own test buckets, which global-setup.ts creates
+  // and empties on every run. Names must contain "test".
+  S3_ENDPOINT: 'http://localhost:8333',
+  S3_REGION: 'auto',
+  S3_ACCESS_KEY_ID: 'change-me-dev-access-key',
+  S3_SECRET_ACCESS_KEY: 'change-me-dev-secret-key-local-only',
+  S3_PRIVATE_BUCKET: 'rental-test-photos-private',
+  S3_PUBLIC_BUCKET: 'rental-test-photos-public',
+  S3_PUBLIC_BASE_URL: 'http://localhost:8333/rental-test-photos-public',
+  S3_FORCE_PATH_STYLE: 'true',
+  PHOTO_SIGNED_URL_TTL_SECONDS: '900',
+  PHOTO_PUBLIC_CACHE_MAX_AGE_SECONDS: '86400',
 } as const satisfies Record<string, string>;
