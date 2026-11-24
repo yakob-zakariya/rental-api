@@ -55,4 +55,6 @@ export const TEST_ENV = {
   PHOTO_MAX_BYTES: '10485760',
   PHOTO_MAX_DIMENSION: '2048',
   PHOTO_MAX_INPUT_PIXELS: '50000000',
+
+  SEARCH_MAX_RADIUS_KM: '20',
 } as const satisfies Record<string, string>;

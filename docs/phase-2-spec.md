@@ -120,7 +120,7 @@ unless a query asks for them by name (G3).
 | id | uuid PK | |
 | property_id | uuid FK → properties | |
 | storage_key | varchar | the re-encoded file in object storage (P1) |
-| thumbnail_key | varchar null | the thumbnail (480 px, T3.4); null only for photos uploaded before it |
+| thumbnail_key | varchar | the thumbnail (480 px, T3.4); every photo has one |
 | phash | varchar(16) | 64-bit perceptual hash, hex (P3) |
 | width, height, bytes | int | of the stored file |
 | position | int | display order, unique per property |
@@ -407,9 +407,18 @@ Any other transition: 409 `INVALID_LISTING_STATE`. **Active** means `pending_rev
   are computed from `approx_location` and rounded to 100 m, so the exact point can't be worked
   out by searching from several places.
 - **G5** `GET /listings` (public): only `live` listings of `active` listers. Filters: sub-city,
-  neighbourhood, `minRent`/`maxRent`, `type`, `minBedrooms`, `furnished`; near me: `lat`, `lng`,
-  `radiusKm` (at most `SEARCH_MAX_RADIUS_KM`). Sort: newest (`published_at`), rent, distance (only
-  with near me). Cursor pagination with a composite cursor, as the admin queues.
+  neighbourhood, `minRent`/`maxRent`, `maxAdvanceMonths` (1–12, decided 2026-11-24: many tenants
+  can pay the rent but not a long advance), `type`, `minBedrooms`, `furnished`; near me: `lat`,
+  `lng`, `radiusKm` (default 5 km, at most `SEARCH_MAX_RADIUS_KM`). Sort: `newest`
+  (`published_at`), `rent_asc`, `rent_desc`, `distance` (only with near me). Cursor pagination
+  (20 a page, at most 50): the cursor holds its sort, the last value and the id, so ties page
+  without gaps and a cursor can't be replayed against another sort. Errors (400):
+  `RENT_RANGE_INVALID`, `LOCATION_INCOMPLETE`, `RADIUS_TOO_LARGE`,
+  `DISTANCE_SORT_NEEDS_LOCATION`, `INVALID_CURSOR`. Cards carry the cover's **thumbnail** (T3.4)
+  as a public URL, the approximate point, and never the exact point, the landmark, the typed
+  neighbourhood name or the lister (the public name comes with T5.2). The app draws the
+  approximate point as a circle of about 500 m, never a pin (decided 2026-11-24): the home can be
+  up to 400 m away.
 - **G6** `GET /listings/:id` (public): a listing that isn't `live` (or whose lister isn't
   `active`) is 404 for everyone except its lister. Shown: listing and property fields except the
   landmark and the unlisted neighbourhood name, photos, sub-city and neighbourhood (the picked

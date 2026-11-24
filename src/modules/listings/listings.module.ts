@@ -8,6 +8,8 @@ import { AreasModule } from '../areas/areas.module.js';
 import { PhotosModule } from '../photos/photos.module.js';
 import { ListingsAdminController } from './admin/listings-admin.controller.js';
 import { ListingsAdminService } from './admin/listings-admin.service.js';
+import { BrowseController } from './browse/browse.controller.js';
+import { BrowseService } from './browse/browse.service.js';
 import { ListingHistory } from './listing-history.entity.js';
 import { Listing } from './listing.entity.js';
 import { ListingsController } from './listings.controller.js';
@@ -50,10 +52,12 @@ import { PublicPhotos } from './public-photos.js';
     ListingsController,
     PropertyPhotosController,
     ListingsAdminController,
+    BrowseController,
   ],
   providers: [
     ListingsService,
     ListingsAdminService,
+    BrowseService,
     PropertyPhotosService,
     PublicPhotos,
     PublicPhotoReconciliation,

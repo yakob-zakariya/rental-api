@@ -110,8 +110,10 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
 
 ## Step 5 — Browse and search
 
-- [ ] **T5.1 Browse.** `GET /listings` with filters, sorts, near me and cursor pagination (G4,
-      G5); tests, including that results and distances come only from `approx_location`.
+- [x] **T5.1 Browse.** `GET /listings` with filters, sorts, near me and cursor pagination (G4,
+      G5); tests, including that results and distances come only from `approx_location`. Done
+      2026-11-24, with `maxAdvanceMonths`, both rent sorts, thumbnails on cards, a 5 km default
+      radius.
 - [ ] **T5.2 Detail and the lister's name.** `GET /listings/:id` (G3, G6) and the public name
       (L7). First check, on your own approved account, the word order and letter case of
       `users.full_name` as Didit returned it (so "first name + father's initial" picks the right

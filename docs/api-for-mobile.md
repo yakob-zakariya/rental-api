@@ -490,6 +490,64 @@ few).
 now"**, and let them move the pin. Nothing is saved. The server counts refused pins by area
 (rounded to about 1 km, with no link to the user) to see where people want the service next.
 
+## Browse (no account needed)
+
+### `GET /listings`
+
+Live listings, newest first by default, 20 at a time. All filters are optional and combine:
+
+| Parameter | Meaning |
+| --- | --- |
+| `subCityId`, `neighbourhoodId` | From `GET /areas` |
+| `minRent`, `maxRent` | Whole birr |
+| `maxAdvanceMonths` | 1–12: "I can pay at most this many months in advance" |
+| `type` | `condominium`, `apartment`, `villa_house`, `compound_room`, `studio` |
+| `minBedrooms` | 0–20 |
+| `furnished` | `true` / `false` |
+| `lat`, `lng`, `radiusKm` | Near me: both `lat` and `lng`; `radiusKm` defaults to 5, at most 20 |
+| `sort` | `newest` (default), `rent_asc`, `rent_desc`, `distance` (needs `lat`/`lng`) |
+| `limit`, `after` | Page size (default 20, at most 50) and the previous page's `nextCursor` |
+
+→ `200`:
+
+```json
+{
+  "items": [
+    {
+      "id": "…", "monthlyRentBirr": 25000, "advanceMonths": 2, "negotiable": true,
+      "availableFrom": "2026-12-01", "publishedAt": "…",
+      "type": "apartment", "bedrooms": 2, "bathrooms": 1, "furnished": false,
+      "sizeM2": 85, "floor": 3, "amenities": ["parking", "guard"],
+      "subCity": { "id": "…", "nameEn": "Bole", "nameAm": "ቦሌ" },
+      "neighbourhood": { "id": "…", "nameEn": "…", "nameAm": "…" },
+      "approxLocation": { "lat": 9.0121, "lng": 38.7631 },
+      "distanceMetres": 1200,
+      "photoCount": 5,
+      "cover": { "thumbnailUrl": "https://…-thumb.jpg", "width": 2048, "height": 1536 }
+    }
+  ],
+  "nextCursor": "…"
+}
+```
+
+- **Paging:** keep the same filters and sort, and pass `after=<nextCursor>` for the next page;
+  `nextCursor: null` means it was the last. A cursor from another sort is refused
+  (`400 INVALID_CURSOR`): when the lister changes the sort or a filter, start again from the
+  first page.
+- **The map: draw `approxLocation` as a circle of about 500 m radius, never a pin**
+  (decided 2026-11-24). It's the home's point moved 200–400 m in a random direction, so the real
+  home can be up to 400 m away; a smaller circle, or a pin, would point people to the wrong
+  house. The exact location is never sent to anyone but the lister.
+- **`distanceMetres`** (near me only) is from that approximate point, rounded to 100 m: show it as
+  "about 1.2 km".
+- **`cover.thumbnailUrl`** is a small (480 px) public image for the card: no token needed, safe to
+  cache. `width`/`height` are the full photo's; the thumbnail has the same proportions. The full
+  photos come with the listing's detail (next task).
+- `availableFrom` in the past means available now. `bathrooms: 0` is a shared bathroom.
+- Errors (400): `RENT_RANGE_INVALID` (min above max), `LOCATION_INCOMPLETE` (lat without lng, or a
+  radius without a point), `RADIUS_TOO_LARGE` (with `max`), `DISTANCE_SORT_NEEDS_LOCATION`,
+  `INVALID_CURSOR`, `VALIDATION_FAILED`.
+
 ## Health
 
 `GET /health` (no token) → `200` when the API, database and Redis are up; `503` otherwise.

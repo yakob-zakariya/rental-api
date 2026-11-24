@@ -2391,6 +2391,195 @@
           ]
         }
       ]
+    },
+    {
+      "name": "9. Browse",
+      "description": "Public browse (T5.1): no token needed.",
+      "item": [
+        {
+          "name": "Browse (newest)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/listings?limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "listings"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "No token. Live listings, newest first. Saves `browseCursor` for **Next page**.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('browseCursor', pm.response.json().nextCursor || '');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Browse near me (Meskel Square, 5 km)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/listings?lat=9.0102&lng=38.7606&sort=distance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "listings"
+              ],
+              "query": [
+                {
+                  "key": "lat",
+                  "value": "9.0102"
+                },
+                {
+                  "key": "lng",
+                  "value": "38.7606"
+                },
+                {
+                  "key": "sort",
+                  "value": "distance"
+                }
+              ]
+            },
+            "description": "Within 5 km (default) of the listings' **approximate** points, nearest first; `distanceMetres` rounded to 100 m. Draw each `approxLocation` as a ~500 m circle, never a pin.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('browseCursor', pm.response.json().nextCursor || '');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Browse filtered",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/listings?minRent=10000&maxRent=40000&maxAdvanceMonths=3&minBedrooms=2&sort=rent_asc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "listings"
+              ],
+              "query": [
+                {
+                  "key": "minRent",
+                  "value": "10000"
+                },
+                {
+                  "key": "maxRent",
+                  "value": "40000"
+                },
+                {
+                  "key": "maxAdvanceMonths",
+                  "value": "3"
+                },
+                {
+                  "key": "minBedrooms",
+                  "value": "2"
+                },
+                {
+                  "key": "sort",
+                  "value": "rent_asc"
+                }
+              ]
+            },
+            "description": "Rent 10,000–40,000, at most 3 months in advance, 2+ bedrooms, cheapest first.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('browseCursor', pm.response.json().nextCursor || '');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Next page",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/listings?limit=20&after={{browseCursor}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "listings"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "after",
+                  "value": "{{browseCursor}}"
+                }
+              ]
+            },
+            "description": "The page after **Browse (newest)** (same sort and filters as the request that saved the cursor; a cursor from another sort is 400 `INVALID_CURSOR`).",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
     }
   ],
   "variable": []

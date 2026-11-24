@@ -25,6 +25,9 @@ import { Property } from './property.entity.js';
 // At most one open listing per property (L10). A partial index whose WHERE TypeORM can't keep in
 // step with Postgres's own rewrite of it, so it lives only in the migration.
 @Index('UQ_listings_one_open_per_property', { synchronize: false })
+// Browse's default order, newest first (G5, T5.1): live listings only. A partial index, so like
+// the one above it lives only in the migration.
+@Index('IDX_listings_live_newest', { synchronize: false })
 @Check('CHK_listings_monthly_rent_birr', `"monthly_rent_birr" > 0`)
 @Check('CHK_listings_advance_months', `"advance_months" BETWEEN 1 AND 12`)
 @Check('CHK_listings_version', `"version" >= 1`)

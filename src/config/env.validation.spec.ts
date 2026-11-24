@@ -65,6 +65,7 @@ describe('validateEnv', () => {
     expect(env.PHOTO_MAX_BYTES).toBe(10485760);
     expect(env.PHOTO_MAX_DIMENSION).toBe(2048);
     expect(env.PHOTO_MAX_INPUT_PIXELS).toBe(50_000_000);
+    expect(env.SEARCH_MAX_RADIUS_KM).toBe(20);
   });
 
   it('converts numbers and booleans from strings', () => {
@@ -131,6 +132,7 @@ describe('validateEnv', () => {
     ['PHOTO_MAX_BYTES', '0', 'must be at least 1'],
     ['PHOTO_MAX_DIMENSION', 'big', 'must be an integer'],
     ['PHOTO_MAX_INPUT_PIXELS', '0', 'must be at least 1'],
+    ['SEARCH_MAX_RADIUS_KM', '0', 'must be at least 1'],
     ['SMS_PROVIDER', 'twilio', 'must be one of console'],
     [
       'DIDIT_BASE_URL',

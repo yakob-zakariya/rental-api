@@ -306,6 +306,13 @@ export class EnvironmentVariables {
   @Min(1, { message: '$property must be at least 1' })
   @IsInt({ message: '$property must be an integer' })
   PHOTO_MAX_INPUT_PIXELS: number = 50_000_000;
+
+  // --- Browse (spec G5; T5.1) ---
+  // The largest "near me" radius a search may ask for, in km.
+  @Transform(toNumber)
+  @Min(1, { message: '$property must be at least 1' })
+  @IsInt({ message: '$property must be an integer' })
+  SEARCH_MAX_RADIUS_KM: number = 20;
 }
 
 // Variables whose .env.example value is a placeholder that production must replace.

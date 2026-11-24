@@ -307,6 +307,22 @@ what was recorded.
 | Relist while the property has a draft, live, in-review, expired or rejected listing | 409 `PROPERTY_HAS_OPEN_LISTING` with that `listingId` |
 | Relist someone else's property | 404 `PROPERTY_NOT_FOUND` |
 
+## Browse (no token)
+
+Approve a listing first (see Listing review). Then, with no token at all:
+
+| Try | Expect |
+| --- | --- |
+| `GET /listings` | the live listings, newest first; each card has a `cover.thumbnailUrl` that opens in the browser (480 px) |
+| `?minRent=10000&maxRent=30000&maxAdvanceMonths=3&minBedrooms=2` | only those that fit |
+| `?lat=9.0102&lng=38.7606` (Meskel Square) | listings within 5 km of their **approximate** point, each with `distanceMetres` in hundreds |
+| `… &sort=distance` | nearest first |
+| `?sort=rent_asc&limit=1`, then `&after=<nextCursor>` | the next cheapest, and so on to `nextCursor: null` |
+| `?sort=distance` without lat/lng | 400 `DISTANCE_SORT_NEEDS_LOCATION` |
+| `?lat=9.01&lng=38.76&radiusKm=25` | 400 `RADIUS_TOO_LARGE`, `max: 20` |
+| A listing in review, a draft, or one of a banned lister | not in the results |
+| Search the response for the listing's landmark or its exact `location` | not there |
+
 ## Worth trying on purpose
 
 | Try | Expect |
