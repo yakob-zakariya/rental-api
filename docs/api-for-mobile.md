@@ -74,6 +74,13 @@ Validation errors also list the fields (values are never echoed back):
 | `PHOTO_NOT_FOUND` | 404 | photo delete | Gone (deleted on another device): refresh |
 | `PHOTO_ORDER_MISMATCH` | 400 | photo reorder | The list changed meanwhile: refresh and reorder again |
 | `ACTIVE_LISTING_LIMIT` | 409 | submit | "You already have `max` listings in review or live: close one first" |
+| `STORAGE_UNAVAILABLE` | 503 | restore, still-available (`true` on a stale listing) | Its photos couldn't be made public just now: "Try again in a moment" |
+| `DEVICE_NOT_FOUND` | 404 | device delete | Already gone (the logout or another sign-in removed it): ignore it |
+| `RENT_RANGE_INVALID` | 400 | browse | Minimum rent above the maximum: the filter form should stop it first |
+| `LOCATION_INCOMPLETE` | 400 | browse | A bug in the app's request (`lat` without `lng`, or a radius without a point): log it |
+| `RADIUS_TOO_LARGE` | 400 | browse | Over `max` km: the app should cap the radius first |
+| `DISTANCE_SORT_NEEDS_LOCATION` | 400 | browse | "Nearest first" needs the user's location: ask for it, or fall back to another sort |
+| `INVALID_CURSOR` | 400 | browse | The sort or a filter changed since that page: start again from the first page |
 
 ## Sign-in (phone + SMS code)
 
@@ -389,7 +396,8 @@ again."). After 30 days stale it becomes `expired` (reopen it, above).
 
 - `available: true`: confirmed; the next check comes 7 days later. Fine without a pending check
   too (a "Still available" button can always be shown on a live listing). On a `stale` listing it
-  restores it (a late tap on the push works).
+  restores it (a late tap on the push works); like `restore`, that can give
+  `503 STORAGE_UNAVAILABLE`: try again.
 - `available: false`: closes it, as `close` below (ask the reason the same way).
 - `reason` with `true`, or no `reason` with `false`: `400 VALIDATION_FAILED`. Any state other than
   `live` or `stale`: `409 INVALID_LISTING_STATE`.
