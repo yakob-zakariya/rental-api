@@ -3,12 +3,12 @@ import { ThrottlerStorage } from '@nestjs/throttler';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { DataSource } from 'typeorm';
-import { ADDIS_ABABA_TIME_ZONE, todayIn } from '../src/common/dates.js';
 import { LISTING_LIMITS } from '../src/modules/listings/listing-limits.js';
 import { SmsSender } from '../src/modules/sms/sms-sender.js';
 import { FakeSmsSender } from './fakes/fake-sms-sender.js';
 import { UnlimitedThrottlerStorage } from './fakes/unlimited-throttler-storage.js';
 import { createTestApp, resetDatabase } from './utils/create-test-app.js';
+import { addisDate } from './utils/listings.js';
 import { signIn } from './utils/sign-in.js';
 
 // Drafts (spec section 3, T2.2): POST/PATCH/DELETE /listings and GET /me/listings.
@@ -34,12 +34,6 @@ const ALL_REQUIRED = [
   'negotiable',
   'availableFrom',
 ];
-
-/** YYYY-MM-DD, `days` after today in Addis Ababa. */
-const addisDate = (days = 0): string => {
-  const [y, m, d] = todayIn(ADDIS_ABABA_TIME_ZONE).split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
-};
 
 interface Lister {
   token: string;

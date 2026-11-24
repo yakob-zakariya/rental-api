@@ -1,7 +1,9 @@
-import type {
-  ThrottlerStorage,
-  ThrottlerStorageRecord,
-} from '@nestjs/throttler';
+import type { ThrottlerStorage } from '@nestjs/throttler';
+
+// The record type isn't exported by the package; take it from the interface.
+type ThrottlerStorageRecord = Awaited<
+  ReturnType<ThrottlerStorage['increment']>
+>;
 
 /**
  * A throttler store that never counts: every request is the first. For e2e files that send more

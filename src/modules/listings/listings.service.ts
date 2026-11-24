@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -9,6 +10,7 @@ import { DataSource, EntityManager, type Point } from 'typeorm';
 import { ADDIS_ABABA_TIME_ZONE, todayIn } from '../../common/dates.js';
 import type { EnvironmentVariables } from '../../config/env.validation.js';
 import { ServiceAreaService } from '../areas/service-area.service.js';
+import { VerificationStatus } from '../users/user.enums.js';
 import { randomOffset } from './approx-location.js';
 import type {
   LatLngDto,
@@ -20,11 +22,13 @@ import { missingFields } from './listing-completeness.js';
 import { ListingHistory } from './listing-history.entity.js';
 import { Listing } from './listing.entity.js';
 import {
+  ACTIVE_LISTING_STATUSES,
   ActorType,
   Amenity,
   ListingHistoryEvent,
   ListingStatus,
 } from './listings.enums.js';
+import { MIN_PHOTOS_TO_SUBMIT, PhotoCounter } from './photo-counter.js';
 import { Property } from './property.entity.js';
 
 export const listingNotFound = () =>
@@ -67,20 +71,29 @@ interface LockedListing {
   property_id: string;
 }
 
+/** Where a lister may submit from (L9). */
+const SUBMITTABLE: readonly ListingStatus[] = [
+  ListingStatus.Draft,
+  ListingStatus.Rejected,
+];
+
 /**
- * The lister's side of listings (spec section 3). T2.2: drafts only; submitting, editing in other
- * states, closing and relisting come in T2.3–T2.5.
+ * The lister's side of listings (spec section 3): drafts (T2.2), submit and withdraw (T2.3).
+ * Editing in other states, closing and relisting come in T2.4–T2.5.
  */
 @Injectable()
 export class ListingsService {
   private readonly maxDrafts: number;
+  private readonly maxActive: number;
 
   constructor(
     private readonly dataSource: DataSource,
     private readonly serviceArea: ServiceAreaService,
+    private readonly photos: PhotoCounter,
     config: ConfigService<EnvironmentVariables, true>,
   ) {
     this.maxDrafts = config.get('MAX_DRAFT_LISTINGS', { infer: true });
+    this.maxActive = config.get('LISTING_MAX_ACTIVE_PER_USER', { infer: true });
   }
 
   /** Every listing of the user, in any state, newest first. */
@@ -102,9 +115,7 @@ export class ListingsService {
 
     const id = await this.dataSource.transaction(async (manager) => {
       // One create at a time per user, so two at once can't both slip under the draft limit.
-      await manager.query(`SELECT 1 FROM users WHERE id = $1 FOR UPDATE`, [
-        userId,
-      ]);
+      await lockUser(manager, userId);
       const [{ drafts }] = await manager.query<{ drafts: number }[]>(
         `SELECT count(*)::int AS drafts
          FROM listings l JOIN properties p ON p.id = l.property_id
@@ -131,14 +142,13 @@ export class ListingsService {
         ...changes({}, body, LISTING_FIELDS),
       });
       const listingId = listing.identifiers[0].id as string;
-      await manager.insert(ListingHistory, {
+      await recordStatusChange(
+        manager,
         listingId,
-        event: ListingHistoryEvent.Status,
-        oldStatus: null,
-        newStatus: ListingStatus.Draft,
-        actorType: ActorType.User,
-        actorId: userId,
-      });
+        null,
+        ListingStatus.Draft,
+        userId,
+      );
       return listingId;
     });
     return this.getMine(userId, id);
@@ -221,6 +231,105 @@ export class ListingsService {
     });
   }
 
+  /**
+   * Sends a draft or a rejected listing to staff review (L2, L4): `pending_review`, hidden from
+   * browse until approved. Every listing goes through review before it first goes live, including
+   * resubmitted rejected ones, and this is the only way out of `draft` and `rejected` towards live.
+   * An available-from date that has passed meanwhile is allowed (decided 2026-11-23: L13 checks it
+   * only when set or changed; the app shows a past date as "Available now").
+   * Errors: 403 VERIFICATION_REQUIRED, 400 LISTING_INCOMPLETE / NOT_ENOUGH_PHOTOS, 404
+   * LISTING_NOT_FOUND (L3), 409 INVALID_LISTING_STATE / ACTIVE_LISTING_LIMIT.
+   */
+  async submit(userId: string, id: string): Promise<MyListingDto> {
+    await this.dataSource.transaction(async (manager) => {
+      // The user first, then the listing: the same order as every other path that takes both.
+      const verification = await lockUser(manager, userId);
+      const locked = await lockMine(manager, userId, id);
+      if (!SUBMITTABLE.includes(locked.status)) throw invalidState();
+
+      await this.assertCanBecomeActive(manager, userId, verification, locked);
+      await manager.update(Listing, id, {
+        status: ListingStatus.PendingReview,
+        submittedAt: () => 'now()',
+      });
+      await recordStatusChange(
+        manager,
+        id,
+        locked.status,
+        ListingStatus.PendingReview,
+        userId,
+      );
+    });
+    return this.getMine(userId, id);
+  }
+
+  /**
+   * Takes a listing back out of review, to fix something before staff look at it (L9). Allowed
+   * even at the draft limit (decided 2026-11-23): the limit is about creating drafts, and refusing
+   * would trap the listing in review.
+   * Errors: 404 LISTING_NOT_FOUND (L3), 409 INVALID_LISTING_STATE (not in review).
+   */
+  async withdraw(userId: string, id: string): Promise<MyListingDto> {
+    await this.dataSource.transaction(async (manager) => {
+      const locked = await lockMine(manager, userId, id);
+      if (locked.status !== ListingStatus.PendingReview) throw invalidState();
+
+      await manager.update(Listing, id, { status: ListingStatus.Draft });
+      await recordStatusChange(
+        manager,
+        id,
+        ListingStatus.PendingReview,
+        ListingStatus.Draft,
+        userId,
+      );
+    });
+    return this.getMine(userId, id);
+  }
+
+  /**
+   * L2: what a listing needs to move into an active state from a non-active one. Submitting uses
+   * it now; reopening an expired listing (L6, T2.4) will too. Checked in this order, inside the
+   * caller's transaction with the user and the listing locked, so the answer can't go stale before
+   * the move: verified, complete, enough photos, under the active cap.
+   */
+  private async assertCanBecomeActive(
+    manager: EntityManager,
+    userId: string,
+    verification: VerificationStatus,
+    locked: LockedListing,
+  ): Promise<void> {
+    if (verification !== VerificationStatus.Approved)
+      throw new ForbiddenException({ code: 'VERIFICATION_REQUIRED' });
+
+    const listing = await this.mine(manager, userId)
+      .andWhere('l.id = :id', { id: locked.id })
+      .getOneOrFail();
+    const missing = missingFields(listing, listing.property!);
+    if (missing.length > 0)
+      throw new BadRequestException({ code: 'LISTING_INCOMPLETE', missing });
+
+    if (
+      (await this.photos.count(manager, locked.property_id)) <
+      MIN_PHOTOS_TO_SUBMIT
+    )
+      throw new BadRequestException({
+        code: 'NOT_ENOUGH_PHOTOS',
+        min: MIN_PHOTOS_TO_SUBMIT,
+      });
+
+    const [{ active }] = await manager.query<{ active: number }[]>(
+      `SELECT count(*)::int AS active
+       FROM listings l JOIN properties p ON p.id = l.property_id
+       WHERE p.lister_id = $1 AND l.status = ANY ($2::listing_status[])`,
+      [userId, ACTIVE_LISTING_STATUSES],
+    );
+    if (active >= this.maxActive)
+      throw new ConflictException({
+        code: 'ACTIVE_LISTING_LIMIT',
+        max: this.maxActive,
+      });
+  }
+
   private async getMine(userId: string, id: string): Promise<MyListingDto> {
     const listing = await this.mine(this.dataSource.manager, userId)
       .andWhere('l.id = :id', { id })
@@ -245,6 +354,39 @@ export class ListingsService {
   private requireInside(location: LatLngDto): Promise<void> {
     return this.serviceArea.requireInside(location.lat, location.lng);
   }
+}
+
+/**
+ * Locks the user's row for the rest of the transaction, so the user's draft and active counts
+ * can't change underneath a create or a submit (two at once would otherwise both fit under a
+ * limit). Returns their verification status as it is now, for L2.
+ */
+async function lockUser(
+  manager: EntityManager,
+  userId: string,
+): Promise<VerificationStatus> {
+  const [row] = await manager.query<
+    { verification_status: VerificationStatus }[]
+  >(`SELECT verification_status FROM users WHERE id = $1 FOR UPDATE`, [userId]);
+  return row.verification_status;
+}
+
+/** A status row in listing_history, in the caller's transaction (overview §6). */
+async function recordStatusChange(
+  manager: EntityManager,
+  listingId: string,
+  oldStatus: ListingStatus | null,
+  newStatus: ListingStatus,
+  userId: string,
+): Promise<void> {
+  await manager.insert(ListingHistory, {
+    listingId,
+    event: ListingHistoryEvent.Status,
+    oldStatus,
+    newStatus,
+    actorType: ActorType.User,
+    actorId: userId,
+  });
 }
 
 /**

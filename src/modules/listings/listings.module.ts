@@ -5,6 +5,7 @@ import { ListingHistory } from './listing-history.entity.js';
 import { Listing } from './listing.entity.js';
 import { ListingsController } from './listings.controller.js';
 import { ListingsService } from './listings.service.js';
+import { NoPhotosYet, PhotoCounter } from './photo-counter.js';
 import { Property } from './property.entity.js';
 
 /** Properties, listings and their history (spec section 3). */
@@ -15,7 +16,11 @@ import { Property } from './property.entity.js';
     AreasModule,
   ],
   controllers: [ListingsController],
-  providers: [ListingsService],
+  // PhotoCounter: no photos until T3.2, so nothing can be submitted outside tests.
+  providers: [
+    ListingsService,
+    { provide: PhotoCounter, useClass: NoPhotosYet },
+  ],
   exports: [TypeOrmModule],
 })
 export class ListingsModule {}

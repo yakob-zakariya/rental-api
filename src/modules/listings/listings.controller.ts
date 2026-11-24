@@ -69,6 +69,36 @@ export class ListingsController {
     return this.listings.update(user.id, id, body);
   }
 
+  /**
+   * Sends a draft or rejected listing to staff review (L2, L4).
+   * Errors: 403 VERIFICATION_REQUIRED; 400 LISTING_INCOMPLETE (with `missing`), NOT_ENOUGH_PHOTOS
+   * (with `min`); 404 LISTING_NOT_FOUND; 409 INVALID_LISTING_STATE, ACTIVE_LISTING_LIMIT (with
+   * `max`).
+   */
+  @Post('listings/:id/submit')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: MyListingDto })
+  submit(
+    @CurrentUser() user: User,
+    @Param('id', listingId) id: string,
+  ): Promise<MyListingDto> {
+    return this.listings.submit(user.id, id);
+  }
+
+  /**
+   * Takes a listing out of review, back to draft.
+   * Errors: 404 LISTING_NOT_FOUND, 409 INVALID_LISTING_STATE (not in review).
+   */
+  @Post('listings/:id/withdraw')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: MyListingDto })
+  withdraw(
+    @CurrentUser() user: User,
+    @Param('id', listingId) id: string,
+  ): Promise<MyListingDto> {
+    return this.listings.withdraw(user.id, id);
+  }
+
   /** Deletes a draft. Errors: 404 LISTING_NOT_FOUND, 409 INVALID_LISTING_STATE (not a draft). */
   @Delete('listings/:id')
   @HttpCode(HttpStatus.NO_CONTENT)

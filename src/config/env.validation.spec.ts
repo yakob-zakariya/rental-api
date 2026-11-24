@@ -51,6 +51,7 @@ describe('validateEnv', () => {
     expect(env.SMS_PROVIDER).toBe(SmsProvider.Console);
     expect(env.DIDIT_BASE_URL).toBe('https://verification.didit.me');
     expect(env.MAX_DRAFT_LISTINGS).toBe(10);
+    expect(env.LISTING_MAX_ACTIVE_PER_USER).toBe(10);
   });
 
   it('converts numbers and booleans from strings', () => {
@@ -106,6 +107,8 @@ describe('validateEnv', () => {
     ['OTP_REQUEST_IP_LIMIT_PER_HOUR', 'many', 'must be an integer'],
     ['MAX_DRAFT_LISTINGS', '0', 'must be at least 1'],
     ['MAX_DRAFT_LISTINGS', '2.5', 'must be an integer'],
+    ['LISTING_MAX_ACTIVE_PER_USER', '0', 'must be at least 1'],
+    ['LISTING_MAX_ACTIVE_PER_USER', 'ten', 'must be an integer'],
     ['SMS_PROVIDER', 'twilio', 'must be one of console'],
     [
       'DIDIT_BASE_URL',

@@ -1387,7 +1387,7 @@
     },
     {
       "name": "8. Listings",
-      "description": "The lister's drafts (T2.2), with the app token. Submitting, review and browsing come later.",
+      "description": "The lister's drafts (T2.2), submit and withdraw (T2.3), with the app token. Review and browsing come later.",
       "item": [
         {
           "name": "Create an empty draft",
@@ -1737,6 +1737,69 @@
                 "exec": [
                   "pm.test('status 400', () => pm.response.to.have.status(400));",
                   "pm.test('bedrooms over the limit', () => pm.expect(pm.response.json()).to.eql({ code: 'BEDROOMS_ABOVE_LIMIT', max: 20 }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Submit for review",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/listings/{{listingId}}/submit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "listings",
+                "{{listingId}}",
+                "submit"
+              ]
+            },
+            "description": "Sends a draft (or a rejected listing) to staff review (L2). Checked in order: verified (403 `VERIFICATION_REQUIRED`), complete (400 `LISTING_INCOMPLETE` with `missing`), at least 3 photos (400 `NOT_ENOUGH_PHOTOS`, `min: 3`), under the cap of 10 active listings (409 `ACTIVE_LISTING_LIMIT`). **Until photos exist (Step 3) a verified user's complete draft always gets `NOT_ENOUGH_PHOTOS`.** 200 (once photos exist): `status: pending_review`."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('a known answer', () => pm.expect([200, 400, 403, 409]).to.include(pm.response.code));",
+                  "if (pm.response.code !== 200) console.log('submit refused:', pm.response.json());"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Withdraw from review",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/listings/{{listingId}}/withdraw",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "listings",
+                "{{listingId}}",
+                "withdraw"
+              ]
+            },
+            "description": "Takes a listing in review back to draft. Not in review: 409 `INVALID_LISTING_STATE` (to try it before Step 3, put the listing in review with psql: see manual-testing.md)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('a known answer', () => pm.expect([200, 409]).to.include(pm.response.code));"
                 ]
               }
             }

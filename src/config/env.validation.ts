@@ -211,6 +211,12 @@ export class EnvironmentVariables {
   @Min(1, { message: '$property must be at least 1' })
   @IsInt({ message: '$property must be an integer' })
   MAX_DRAFT_LISTINGS: number = 10;
+
+  // Active listings (pending_review, live, stale) one user may hold: the hard cap (spec L2, P2-1).
+  @Transform(toNumber)
+  @Min(1, { message: '$property must be at least 1' })
+  @IsInt({ message: '$property must be an integer' })
+  LISTING_MAX_ACTIVE_PER_USER: number = 10;
 }
 
 // Variables whose .env.example value is a placeholder that production must replace.

@@ -41,8 +41,9 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
         nothing that identifies the user.
       - Done 2026-11-23: also the draft limit (`MAX_DRAFT_LISTINGS`, 409 `DRAFT_LISTING_LIMIT`),
         upper limits with their own codes (`listing-limits.ts`), `missing` on every listing.
-- [ ] **T2.3 Submit and withdraw.** L2 (verified, complete, 3+ photos — tested with a fake photo
+- [x] **T2.3 Submit and withdraw.** L2 (verified, complete, 3+ photos — tested with a fake photo
       count until Step 3 — and the cap), L4, `listing_history` rows; tests.
+      Done 2026-11-23: `PhotoCounter` answers 0 until T3.2 (which must replace `NoPhotosYet`).
 - [ ] **T2.4 Editing after submission.** L5 and L6 (which fields send a listing back to review,
       rent and available-from recorded, `needs_review` on expired, reopen); tests for each field
       group and state.

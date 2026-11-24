@@ -38,4 +38,5 @@ export const TEST_ENV = {
   APP_VERIFICATION_CALLBACK_URL: 'https://app.example.test/verification/done',
 
   MAX_DRAFT_LISTINGS: '10',
+  LISTING_MAX_ACTIVE_PER_USER: '10',
 } as const satisfies Record<string, string>;

@@ -201,6 +201,18 @@ half-filled; `missing` in every answer lists what still has to be filled in befo
 | `DELETE /listings/<id>` | 204; gone from `GET /me/listings`, its property too |
 | PATCH or DELETE a listing that isn't a draft (in psql: `UPDATE listings SET status = 'pending_review', …`) | 409 `INVALID_LISTING_STATE` |
 
+**Submit and withdraw.** Until photos exist (Step 3) the API counts 0 photos for every listing, so
+a submit by hand always stops at the photo check; the automated tests cover a successful submit.
+
+| Try | Expect |
+| --- | --- |
+| `POST /listings/<id>/submit` as a user who isn't verified | 403 `VERIFICATION_REQUIRED` (checked first) |
+| … verified (in psql: `UPDATE users SET verification_status = 'approved' WHERE phone = '+2519…';`), on an empty draft | 400 `LISTING_INCOMPLETE` with `missing` (the same list the draft shows) |
+| … on a complete draft | 400 `NOT_ENOUGH_PHOTOS`, `min: 3` (until Step 3) |
+| `POST /listings/<id>/withdraw` on a draft | 409 `INVALID_LISTING_STATE` (only a listing in review can be withdrawn) |
+| To try withdraw: in psql `UPDATE listings SET status = 'pending_review' WHERE id = '<id>';`, then withdraw | 200, `status: draft`; `SELECT * FROM listing_history WHERE listing_id = '<id>';` shows the change |
+| Submit or withdraw someone else's listing | 404 `LISTING_NOT_FOUND` |
+
 ## Worth trying on purpose
 
 | Try | Expect |

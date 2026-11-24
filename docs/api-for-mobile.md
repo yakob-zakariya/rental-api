@@ -57,7 +57,11 @@ Validation errors also list the fields (values are never echoed back):
 | `DRAFT_LISTING_LIMIT` | 409 | listing create | "You have `max` unfinished listings: finish or delete one first" |
 | `NO_FIELDS_TO_UPDATE` | 400 | listing edit | A bug in the app's request (empty PATCH): log it |
 | `LISTING_NOT_FOUND` | 404 | listing edit / delete | Gone (deleted on another device): refresh "My listings" |
-| `INVALID_LISTING_STATE` | 409 | listing edit / delete | The listing moved on (for now only drafts can be edited or deleted): refresh "My listings" |
+| `INVALID_LISTING_STATE` | 409 | listing edit / delete / submit / withdraw | The listing moved on (for example it was already submitted, or staff decided): refresh "My listings" |
+| `VERIFICATION_REQUIRED` | 403 | submit | Start identity verification first ("Verify your ID to publish"), then submit again |
+| `LISTING_INCOMPLETE` | 400 | submit | Fields still empty: `missing` lists them (the same list the listing shows); jump to the first |
+| `NOT_ENOUGH_PHOTOS` | 400 | submit | "Add at least `min` photos" |
+| `ACTIVE_LISTING_LIMIT` | 409 | submit | "You already have `max` listings in review or live: close one first" |
 
 ## Sign-in (phone + SMS code)
 
@@ -235,8 +239,7 @@ English and Amharic, both sorted by English name:
 
 ## Listings: drafts (the lister)
 
-Signed in (app token). **No verification is needed to make a draft**; it's needed to submit
-(coming next). A draft can be saved half-filled, so the app can save the form step by step.
+Signed in (app token). **No verification is needed to make a draft**; it's needed to submit. A draft can be saved half-filled, so the app can save the form step by step.
 Photos come in a later step: they're uploaded to a draft, so create the draft first.
 
 ### Fields (`POST /listings` and `PATCH /listings/:id`)
@@ -283,6 +286,30 @@ with submitting and editing after review). Errors: as POST, plus `NO_FIELDS_TO_U
 ### `DELETE /listings/:id`
 
 → `204`. Only drafts. Errors: `LISTING_NOT_FOUND`, `INVALID_LISTING_STATE`.
+
+### `POST /listings/:id/submit`
+
+No body. Sends a draft, or a rejected listing you've fixed, to staff review. → `200` with the
+listing, now `status: "pending_review"` (hidden from everyone else until staff approve it). The
+checks, in this order:
+
+1. verified identity, else `403 VERIFICATION_REQUIRED`;
+2. nothing `missing`, else `400 LISTING_INCOMPLETE` with `missing`;
+3. at least 3 photos, else `400 NOT_ENOUGH_PHOTOS` with `min`;
+4. fewer than 10 listings already in review, live or stale, else `409 ACTIVE_LISTING_LIMIT` with
+   `max`.
+
+Other states: `409 INVALID_LISTING_STATE`. **Until photo upload exists (Phase 2, Step 3) every
+submit stops at check 3.** An available-from date that has passed since it was set doesn't block
+submitting: show a past date as "Available now".
+
+A rejected listing keeps `staffReasonCode` and `listerNote` (the last decision) after it's
+resubmitted; show them only while `status` is `rejected`.
+
+### `POST /listings/:id/withdraw`
+
+No body. Takes a listing in review back to `draft` (to fix something before staff look at it).
+→ `200` with the listing. Not in review: `409 INVALID_LISTING_STATE`.
 
 ### `GET /me/listings`
 

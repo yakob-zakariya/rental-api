@@ -246,9 +246,14 @@ Any other transition: 409 `INVALID_LISTING_STATE`. **Active** means `pending_rev
   needs:
   - `verification_status = approved` (403 `VERIFICATION_REQUIRED`, as `VerifiedGuard`);
   - every required field filled (400 `LISTING_INCOMPLETE` with `missing: [...]`);
-  - at least 3 photos (400 `NOT_ENOUGH_PHOTOS`);
+  - at least 3 photos (400 `NOT_ENOUGH_PHOTOS` with `min`);
   - fewer than `LISTING_MAX_ACTIVE_PER_USER` (default 10) active listings already (409
-    `ACTIVE_LISTING_LIMIT`).
+    `ACTIVE_LISTING_LIMIT` with `max`).
+
+  Checked in that order, in one transaction with the user and the listing locked. An
+  available-from date that has passed since it was set doesn't block submitting (decided
+  2026-11-23; L13 checks it only when set or changed, and the app shows a past date as "Available
+  now"). Withdrawing (`pending_review` → `draft`) is allowed even at the draft limit (L1).
 - **L3** Only the lister can change a listing or its property. Someone else's listing answers
   404 `LISTING_NOT_FOUND`, the same as a listing that doesn't exist.
 - **L4** Every listing goes through staff review before it first goes live (decided
@@ -537,6 +542,9 @@ MinIO or a fake `PhotoStorage`; tests never call FCM.
 - **Service area (2026-11-10):** strict, no margin outside the OpenStreetMap boundary. A refused
   pin gets a friendly message in the app and is recorded rounded to about 1 km, with no user
   link. → G1
+- **Submit and withdraw (2026-11-23):** until photos exist (T3.2), the API counts 0 photos for
+  every property, so nothing can be submitted outside the tests. Withdrawing is allowed at the
+  draft limit; a passed available-from date doesn't block submitting. → L1, L2, L13
 - **Drafts (2026-11-23):** a draft may be half-filled; everything is required to submit except
   size, floor, amenities and the typed neighbourhood name (landmark and owner/representative are
   required). At most 10 drafts per user (config). Generous upper limits on bedrooms, bathrooms,
