@@ -57,10 +57,13 @@ Validation errors also list the fields (values are never echoed back):
 | `DRAFT_LISTING_LIMIT` | 409 | listing create | "You have `max` unfinished listings: finish or delete one first" |
 | `NO_FIELDS_TO_UPDATE` | 400 | listing edit | A bug in the app's request (empty PATCH): log it |
 | `LISTING_NOT_FOUND` | 404 | listing edit / delete | Gone (deleted on another device): refresh "My listings" |
-| `INVALID_LISTING_STATE` | 409 | listing edit / delete / submit / withdraw / reopen | The listing moved on (for example it was already submitted, or staff decided): refresh "My listings" |
+| `INVALID_LISTING_STATE` | 409 | listing edit / delete / submit / withdraw / reopen / close | The listing moved on (for example it was already submitted, or staff decided): refresh "My listings" |
 | `VERIFICATION_REQUIRED` | 403 | submit | Start identity verification first ("Verify your ID to publish"), then submit again |
 | `LISTING_INCOMPLETE` | 400 | submit, reopen, edit | Fields still empty (or an edit that would empty them after submitting): `missing` lists them; jump to the first |
 | `NOT_ENOUGH_PHOTOS` | 400 | submit | "Add at least `min` photos" |
+| `RENTED_IN_APP_NEVER_PUBLISHED` | 400 | close | Don't offer "Rented through the app" for a listing that was never live (`publishedAt` empty) |
+| `PROPERTY_HAS_OPEN_LISTING` | 409 | relist | The home already has a listing that isn't closed (`listingId`): open that one instead (fix and resubmit a rejected one, or close it) |
+| `PROPERTY_NOT_FOUND` | 404 | relist | Gone: refresh "My listings" |
 | `ACTIVE_LISTING_LIMIT` | 409 | submit | "You already have `max` listings in review or live: close one first" |
 
 ## Sign-in (phone + SMS code)
@@ -288,7 +291,7 @@ an edit can move a live listing back to review. What an edit does depends on the
 | `pending_review` | applies; it stays in review |
 | `live`, `stale` | `monthlyRentBirr`, `availableFrom`, `negotiable`: apply at once, it stays live. **Any other field (including the pin, and photos once they exist): the listing goes back to `pending_review` and is hidden until staff approve it again** |
 | `expired` | applies; a field that needs review sets `needsReview` (reopening then goes to review) |
-| `rented`, `removed` | refused (`409 INVALID_LISTING_STATE`): relist instead (coming next) |
+| `rented`, `removed` | refused (`409 INVALID_LISTING_STATE`): relist instead |
 
 - Before saving a change to a live listing that needs review, **warn the lister**: "Changing
   this sends your listing back for review. It will be hidden until it's approved." Rent,
@@ -334,6 +337,32 @@ No body. For an `expired` listing ("Is this still available? Confirm the details
 never approved. Show which before they confirm: `needsReview: true` → "It will be reviewed again
 before it's live". The same checks as submit (`VERIFICATION_REQUIRED`, `NOT_ENOUGH_PHOTOS`,
 `ACTIVE_LISTING_LIMIT`…); not expired: `409 INVALID_LISTING_STATE`.
+
+### `POST /listings/:id/close`
+
+Body: `{ "reason": "rented_in_app" | "rented_elsewhere" | "no_longer_for_rent" }`. → `200` with
+the listing: `rented` (the first two) or `removed`, with `closeReason` and `closedAt`. Ask why
+when the lister closes ("Rented through the app", "Rented elsewhere", "No longer for rent").
+
+- Offer **"Rented through the app" only if `publishedAt` is set**; otherwise the API answers
+  `400 RENTED_IN_APP_NEVER_PUBLISHED`.
+- From any state except a draft (delete it) or one already closed (`409 INVALID_LISTING_STATE`).
+- A closed listing can't be edited, submitted or reopened: relist it.
+
+### `POST /properties/:id/listings` (relist)
+
+No body; `:id` is the listing's `property.id`. For a home whose listings are all rented or
+removed ("List it again"). → `201` with a new draft on the same home: the home's details and
+photos are the same ones; rent, advance months and negotiable are copied from the last listing,
+available-from only if it isn't past (otherwise it shows in `missing`). The old listing stays in
+"My listings". Then edit and submit it as usual (it's reviewed again).
+
+Errors: `409 PROPERTY_HAS_OPEN_LISTING` (with `listingId`: open that listing instead; a
+rejected one must be fixed and resubmitted, or closed, first), `409 DRAFT_LISTING_LIMIT`,
+`404 PROPERTY_NOT_FOUND`.
+
+Editing the home's details in the new draft changes them for the old listings too (they share
+the home).
 
 ### `GET /me/listings`
 

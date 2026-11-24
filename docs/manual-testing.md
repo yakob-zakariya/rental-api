@@ -234,6 +234,19 @@ what was recorded.
 | In psql: `UPDATE listings SET status = 'pending_review' WHERE id = '<id>';` then `… SET status = 'expired' …` | `needs_review` becomes true by itself (database trigger) |
 | Reopen a listing that isn't expired | 409 `INVALID_LISTING_STATE` |
 
+**Closing and relisting (L11, L12).**
+
+| Try | Expect |
+| --- | --- |
+| Live: `POST /listings/<id>/close { "reason": "rented_elsewhere" }` | 200, `status: rented`, `closeReason`, `closedAt`; a history row with the reason |
+| `{ "reason": "no_longer_for_rent" }` | `status: removed` |
+| `{ "reason": "rented_in_app" }` on a listing that was never published (`published_at` empty) | 400 `RENTED_IN_APP_NEVER_PUBLISHED` |
+| `{ "reason": "staff_takedown" }` | 400 `VALIDATION_FAILED` (staff only) |
+| Close a draft, or a closed listing | 409 `INVALID_LISTING_STATE` |
+| `POST /properties/<property.id>/listings` after closing | 201, a new draft with rent, advance months and negotiable copied (available-from only if not past); the old listing stays in `GET /me/listings` |
+| Relist while the property has a draft, live, in-review, expired or rejected listing | 409 `PROPERTY_HAS_OPEN_LISTING` with that `listingId` |
+| Relist someone else's property | 404 `PROPERTY_NOT_FOUND` |
+
 ## Worth trying on purpose
 
 | Try | Expect |

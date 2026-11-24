@@ -19,11 +19,20 @@ import {
 } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import { User } from '../users/user.entity.js';
-import { ListingFieldsDto, MyListingDto } from './dto/listing.dto.js';
-import { ListingsService, listingNotFound } from './listings.service.js';
+import {
+  CloseListingDto,
+  ListingFieldsDto,
+  MyListingDto,
+} from './dto/listing.dto.js';
+import {
+  ListingsService,
+  listingNotFound,
+  propertyNotFound,
+} from './listings.service.js';
 
-// A malformed id can't name a listing: the same 404 as an unknown one.
+// A malformed id can't name a listing or a property: the same 404 as an unknown one.
 const listingId = new ParseUUIDPipe({ exceptionFactory: listingNotFound });
+const propertyId = new ParseUUIDPipe({ exceptionFactory: propertyNotFound });
 
 /** The lister's listings (spec section 3). Signed-in, active users; no verification to draft (L1). */
 @ApiTags('listings')
@@ -113,6 +122,36 @@ export class ListingsController {
     @Param('id', listingId) id: string,
   ): Promise<MyListingDto> {
     return this.listings.reopen(user.id, id);
+  }
+
+  /**
+   * Closes a listing with a reason (L12). Errors: 400 VALIDATION_FAILED (another reason),
+   * RENTED_IN_APP_NEVER_PUBLISHED; 404 LISTING_NOT_FOUND; 409 INVALID_LISTING_STATE (a draft, or
+   * already closed).
+   */
+  @Post('listings/:id/close')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: MyListingDto })
+  close(
+    @CurrentUser() user: User,
+    @Param('id', listingId) id: string,
+    @Body() body: CloseListingDto,
+  ): Promise<MyListingDto> {
+    return this.listings.close(user.id, id, body.reason);
+  }
+
+  /**
+   * Relists a property (L11): a new draft after its listings are rented or removed.
+   * Errors: 404 PROPERTY_NOT_FOUND; 409 PROPERTY_HAS_OPEN_LISTING (with `listingId`),
+   * DRAFT_LISTING_LIMIT.
+   */
+  @Post('properties/:id/listings')
+  @ApiCreatedResponse({ type: MyListingDto })
+  relist(
+    @CurrentUser() user: User,
+    @Param('id', propertyId) id: string,
+  ): Promise<MyListingDto> {
+    return this.listings.relist(user.id, id);
   }
 
   /** Deletes a draft. Errors: 404 LISTING_NOT_FOUND, 409 INVALID_LISTING_STATE (not a draft). */

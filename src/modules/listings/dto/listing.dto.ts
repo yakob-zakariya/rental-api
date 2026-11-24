@@ -5,6 +5,7 @@ import {
   IsArray,
   IsBoolean,
   IsEnum,
+  IsIn,
   IsInt,
   IsNumber,
   IsObject,
@@ -20,6 +21,8 @@ import { LISTING_LIMITS, TEXT_LIMITS } from '../listing-limits.js';
 import {
   Amenity,
   CloseReason,
+  LISTER_CLOSE_REASONS,
+  type ListerCloseReason,
   ListerRelation,
   ListingStatus,
   PropertyType,
@@ -230,6 +233,16 @@ export class ListingFieldsDto {
   @IsOptional()
   @IsCalendarDate()
   availableFrom?: string | null;
+}
+
+export class CloseListingDto {
+  @ApiProperty({
+    enum: LISTER_CLOSE_REASONS,
+    description:
+      'rented_in_app / rented_elsewhere → rented; no_longer_for_rent → removed. rented_in_app only for a listing that was published (else 400 RENTED_IN_APP_NEVER_PUBLISHED)',
+  })
+  @IsIn(LISTER_CLOSE_REASONS)
+  reason: ListerCloseReason;
 }
 
 // --- Responses ---

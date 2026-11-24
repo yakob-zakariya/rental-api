@@ -47,8 +47,10 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
 - [x] **T2.4 Editing after submission.** L5 and L6 (which fields send a listing back to review,
       rent and available-from recorded, `needs_review` on expired, reopen); tests for each field
       group and state. Done 2026-11-24, with the never-approved and expired-in-review rules (L6).
-- [ ] **T2.5 Close and relist.** L11, L12 (`close`, the three reasons, relist copying fields);
+- [x] **T2.5 Close and relist.** L11, L12 (`close`, the three reasons, relist copying fields);
       tests.
+      Done 2026-11-24, with `rented_in_app` only after publishing (400
+      `RENTED_IN_APP_NEVER_PUBLISHED`) and a rejected listing blocking relisting.
 
 ## Step 3 — Photos
 

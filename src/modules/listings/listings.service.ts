@@ -6,7 +6,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DataSource, EntityManager, type Point } from 'typeorm';
+import {
+  DataSource,
+  EntityManager,
+  type Point,
+  QueryFailedError,
+} from 'typeorm';
 import { ADDIS_ABABA_TIME_ZONE, todayIn } from '../../common/dates.js';
 import type { EnvironmentVariables } from '../../config/env.validation.js';
 import { ServiceAreaService } from '../areas/service-area.service.js';
@@ -25,14 +30,19 @@ import {
   ACTIVE_LISTING_STATUSES,
   ActorType,
   Amenity,
+  CloseReason,
+  type ListerCloseReason,
   ListingHistoryEvent,
   ListingStatus,
+  OPEN_LISTING_STATUSES,
 } from './listings.enums.js';
 import { MIN_PHOTOS_TO_SUBMIT, PhotoCounter } from './photo-counter.js';
 import { Property } from './property.entity.js';
 
 export const listingNotFound = () =>
   new NotFoundException({ code: 'LISTING_NOT_FOUND' });
+export const propertyNotFound = () =>
+  new NotFoundException({ code: 'PROPERTY_NOT_FOUND' });
 const invalidState = () =>
   new ConflictException({ code: 'INVALID_LISTING_STATE' });
 
@@ -76,6 +86,15 @@ interface LockedListing {
 /** Where a lister may submit from (L9). */
 const SUBMITTABLE: readonly ListingStatus[] = [
   ListingStatus.Draft,
+  ListingStatus.Rejected,
+];
+
+/** Where a lister may close from (L9, L12); a draft is deleted instead. */
+const CLOSABLE: readonly ListingStatus[] = [
+  ListingStatus.PendingReview,
+  ListingStatus.Live,
+  ListingStatus.Stale,
+  ListingStatus.Expired,
   ListingStatus.Rejected,
 ];
 
@@ -147,17 +166,7 @@ export class ListingsService {
     const id = await this.dataSource.transaction(async (manager) => {
       // One create at a time per user, so two at once can't both slip under the draft limit.
       await lockUser(manager, userId);
-      const [{ drafts }] = await manager.query<{ drafts: number }[]>(
-        `SELECT count(*)::int AS drafts
-         FROM listings l JOIN properties p ON p.id = l.property_id
-         WHERE p.lister_id = $1 AND l.status = 'draft'`,
-        [userId],
-      );
-      if (drafts >= this.maxDrafts)
-        throw new ConflictException({
-          code: 'DRAFT_LISTING_LIMIT',
-          max: this.maxDrafts,
-        });
+      await this.assertUnderDraftLimit(manager, userId);
       if (body.neighbourhoodId)
         await assertPickable(manager, body.neighbourhoodId);
 
@@ -419,6 +428,128 @@ export class ListingsService {
   }
 
   /**
+   * Closes a listing with one of the lister's reasons (L12): rented_in_app or rented_elsewhere →
+   * rented, no_longer_for_rent → removed. Allowed from pending_review, live, stale, expired and
+   * rejected (a draft is deleted instead). "Rented in the app" needs a listing that was published
+   * at some point (decided 2026-11-24): one nobody saw can't have been rented through the app, and
+   * that number must be trustworthy. It doesn't pick the tenant yet (Phase 3).
+   * Errors: 400 RENTED_IN_APP_NEVER_PUBLISHED, 404 LISTING_NOT_FOUND (L3), 409
+   * INVALID_LISTING_STATE.
+   */
+  async close(
+    userId: string,
+    id: string,
+    reason: ListerCloseReason,
+  ): Promise<MyListingDto> {
+    await this.dataSource.transaction(async (manager) => {
+      const locked = await lockMine(manager, userId, id);
+      if (!CLOSABLE.includes(locked.status)) throw invalidState();
+      if (reason === CloseReason.RentedInApp && locked.published_at === null)
+        throw new BadRequestException({
+          code: 'RENTED_IN_APP_NEVER_PUBLISHED',
+        });
+
+      const status =
+        reason === CloseReason.NoLongerForRent
+          ? ListingStatus.Removed
+          : ListingStatus.Rented;
+      await manager.update(Listing, id, {
+        status,
+        closeReason: reason,
+        closedAt: () => 'now()',
+      });
+      await recordStatusChange(manager, id, locked.status, status, userId, {
+        closeReason: reason,
+      });
+    });
+    return this.getMine(userId, id);
+  }
+
+  /**
+   * Relists a property (L11): a new draft on it, after its listings are all rented or removed, so
+   * the history is kept. Copies rent, advance months and negotiable from the latest closed
+   * listing, and available-from only if it's today or later (decided 2026-11-24); the property's
+   * own fields are shared. A rejected listing blocks relisting like an open one (decided
+   * 2026-11-24): fix and resubmit it, or close it, first.
+   * Errors: 404 PROPERTY_NOT_FOUND (L3), 409 PROPERTY_HAS_OPEN_LISTING (with `listingId`, L10) /
+   * DRAFT_LISTING_LIMIT.
+   */
+  async relist(userId: string, propertyId: string): Promise<MyListingDto> {
+    const id = await this.dataSource.transaction(async (manager) => {
+      await lockUser(manager, userId);
+      // Locked, so two relists at once run one after the other and the second sees the first.
+      const [property] = await manager.query<{ id: string }[]>(
+        `SELECT id FROM properties WHERE id = $1 AND lister_id = $2 FOR UPDATE`,
+        [propertyId, userId],
+      );
+      if (!property) throw propertyNotFound();
+
+      const [blocking] = await manager.query<{ id: string }[]>(
+        `SELECT id FROM listings
+         WHERE property_id = $1 AND status = ANY ($2::listing_status[])
+         ORDER BY created_at DESC LIMIT 1`,
+        [propertyId, [...OPEN_LISTING_STATUSES, ListingStatus.Rejected]],
+      );
+      if (blocking)
+        throw new ConflictException({
+          code: 'PROPERTY_HAS_OPEN_LISTING',
+          listingId: blocking.id,
+        });
+      await this.assertUnderDraftLimit(manager, userId);
+
+      const previous = await manager.findOne(Listing, {
+        where: { propertyId },
+        order: { closedAt: 'DESC', createdAt: 'DESC' },
+      });
+      const today = todayIn(ADDIS_ABABA_TIME_ZONE);
+      const insert = manager.insert(Listing, {
+        propertyId,
+        monthlyRentBirr: previous?.monthlyRentBirr ?? null,
+        advanceMonths: previous?.advanceMonths ?? null,
+        negotiable: previous?.negotiable ?? null,
+        availableFrom:
+          previous?.availableFrom && previous.availableFrom >= today
+            ? previous.availableFrom
+            : null,
+      });
+      // The lock above already orders relists; the index (L10) is the last word if anything slips.
+      const { identifiers } = await insert.catch((error: unknown) => {
+        if (violates(error, 'UQ_listings_one_open_per_property'))
+          throw new ConflictException({ code: 'PROPERTY_HAS_OPEN_LISTING' });
+        throw error;
+      });
+      const listingId = identifiers[0].id as string;
+      await recordStatusChange(
+        manager,
+        listingId,
+        null,
+        ListingStatus.Draft,
+        userId,
+      );
+      return listingId;
+    });
+    return this.getMine(userId, id);
+  }
+
+  /** L1: at most MAX_DRAFT_LISTINGS drafts at once. The caller holds the user lock. */
+  private async assertUnderDraftLimit(
+    manager: EntityManager,
+    userId: string,
+  ): Promise<void> {
+    const [{ drafts }] = await manager.query<{ drafts: number }[]>(
+      `SELECT count(*)::int AS drafts
+       FROM listings l JOIN properties p ON p.id = l.property_id
+       WHERE p.lister_id = $1 AND l.status = 'draft'`,
+      [userId],
+    );
+    if (drafts >= this.maxDrafts)
+      throw new ConflictException({
+        code: 'DRAFT_LISTING_LIMIT',
+        max: this.maxDrafts,
+      });
+  }
+
+  /**
    * L2: what a listing needs to move into an active state from a non-active one. Submitting uses
    * it now; reopening an expired listing (L6, T2.4) will too. Checked in this order, inside the
    * caller's transaction with the user and the listing locked, so the answer can't go stale before
@@ -510,15 +641,25 @@ async function recordStatusChange(
   oldStatus: ListingStatus | null,
   newStatus: ListingStatus,
   userId: string,
+  reason: Pick<Partial<ListingHistory>, 'closeReason'> = {},
 ): Promise<void> {
   await manager.insert(ListingHistory, {
     listingId,
     event: ListingHistoryEvent.Status,
     oldStatus,
     newStatus,
+    ...reason,
     actorType: ActorType.User,
     actorId: userId,
   });
+}
+
+/** A unique or check violation of the named constraint (Postgres reports it by name). */
+function violates(error: unknown, constraint: string): boolean {
+  return (
+    error instanceof QueryFailedError &&
+    (error.driverError as { constraint?: string }).constraint === constraint
+  );
 }
 
 /** A rent or available-from row in listing_history, in the caller's transaction (L5). */

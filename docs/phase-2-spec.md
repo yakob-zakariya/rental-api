@@ -299,10 +299,18 @@ Any other transition: 409 `INVALID_LISTING_STATE`. **Active** means `pending_rev
   `PROPERTY_HAS_OPEN_LISTING`.
 - **L11** Relisting creates a new listing on the same property after `rented` or `removed`, so
   history is kept (overview §6). It starts as a `draft` with the old listing's fields copied.
+  Decided 2026-11-24: it copies rent, advance months and negotiable from the latest closed
+  listing, and available-from only if it's today or later (the property's fields are shared).
+  A `rejected` listing blocks relisting like an open one: fix and resubmit it, or close it,
+  first. Blocked: 409 `PROPERTY_HAS_OPEN_LISTING` with `listingId`. Someone else's property:
+  404 `PROPERTY_NOT_FOUND`. The draft limit (L1) applies.
 - **L12** Closing needs a reason: `rented_in_app` or `rented_elsewhere` → `rented`;
   `no_longer_for_rent` → `removed`. The reason is stored on the listing and in
   `listing_history`. ("Rented in the app" doesn't pick the tenant yet; that comes with contact
-  requests in Phase 3.)
+  requests in Phase 3.) `rented_in_app` needs a listing that was published at some point
+  (`published_at` set): otherwise 400 `RENTED_IN_APP_NEVER_PUBLISHED` (decided 2026-11-24, so
+  that number can be trusted). A lister can't use `staff_takedown`. A draft can't be closed
+  (delete it instead).
 - **L13** Money fields are integers of birr; anything else is 400 (hard rule 6).
   `advance_months` is 1–12. `available_from` can't be in the past (Addis Ababa date) when it is
   set or changed: 400 `AVAILABLE_FROM_IN_PAST`. Upper limits (decided 2026-11-23, generous so no
@@ -554,6 +562,10 @@ MinIO or a fake `PhotoStorage`; tests never call FCM.
 - **Service area (2026-11-10):** strict, no margin outside the OpenStreetMap boundary. A refused
   pin gets a friendly message in the app and is recorded rounded to about 1 km, with no user
   link. → G1
+- **Close and relist (2026-11-24):** `rented_in_app` only for a listing that was published; a
+  rejected listing blocks relisting; relisting copies available-from only if it's today or
+  later. Raised for Phase 4: staff can't yet see what a listing looked like when it was live
+  (roadmap Q15). → L11, L12
 - **Editing after submitting (2026-11-24):** outside draft a required field can't be emptied
   (`LISTING_INCOMPLETE`); reopening goes to review if the listing needs review or was never
   approved; a listing that expires while in review is marked `needs_review` (database trigger);

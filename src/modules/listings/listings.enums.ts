@@ -54,6 +54,14 @@ export enum CloseReason {
   StaffTakedown = 'staff_takedown',
 }
 
+/** The reasons a lister may close with (L12); staff_takedown is staff's only (R5). */
+export const LISTER_CLOSE_REASONS = [
+  CloseReason.RentedInApp,
+  CloseReason.RentedElsewhere,
+  CloseReason.NoLongerForRent,
+] as const;
+export type ListerCloseReason = (typeof LISTER_CLOSE_REASONS)[number];
+
 /** A rejection or takedown reason, sent to the lister (R4, R5). */
 export enum StaffReasonCode {
   PhotosUnclear = 'PHOTOS_UNCLEAR',

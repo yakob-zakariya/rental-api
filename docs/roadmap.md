@@ -122,4 +122,11 @@ Details are in `product-overview.md`.
   requests a code for the first time we don't know their language yet.
 - **Q14 (Phase 4).** Who can report a listing: any signed-in user, a verified one, or only a
   tenant with a contact request on it? Can the landlord respond to a report?
+- **Q15 (Phase 4, raised 2026-11-24).** Can staff see what a listing looked like when it was
+  live? Today they can't: `listing_history` keeps only status, rent and available-from changes.
+  The description, rooms, location, landmark (and later the photos) live on the shared property
+  row, so a later edit, including one in a relist draft, overwrites what an old, closed listing
+  shows. A report about a listing might need the version the tenant saw. Options: a snapshot of
+  the listing and property each time it goes live (approval, reopen), or a history row for
+  every field change. Which, and from when (before launch, so old listings have one)?
 - Phase 2's questions (P2-1–P2-15, T-1–T-4) are decided; see `phase-2-spec.md` section 12.

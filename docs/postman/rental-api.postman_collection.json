@@ -1387,7 +1387,7 @@
     },
     {
       "name": "8. Listings",
-      "description": "The lister's listings (T2.2–T2.4), with the app token: drafts, submit, withdraw, editing in every state, reopen. Review and browsing come later.",
+      "description": "The lister's listings (T2.2–T2.5), with the app token: drafts, submit, withdraw, editing in every state, reopen, close, relist. Review and browsing come later.",
       "item": [
         {
           "name": "Create an empty draft",
@@ -1832,6 +1832,86 @@
                 "exec": [
                   "pm.test('a known answer', () => pm.expect([200, 400, 403, 409]).to.include(pm.response.code));",
                   "if (pm.response.code !== 200) console.log('reopen refused:', pm.response.json());"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Close a listing",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/listings/{{listingId}}/close",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "listings",
+                "{{listingId}}",
+                "close"
+              ]
+            },
+            "description": "Reasons: `rented_in_app`, `rented_elsewhere` → `rented`; `no_longer_for_rent` → `removed`. `rented_in_app` only if the listing was published once (else 400 `RENTED_IN_APP_NEVER_PUBLISHED`). A draft can't be closed (delete it): 409 `INVALID_LISTING_STATE`. Saves `listingPropertyId` for **Relist**.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"rented_elsewhere\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('a known answer', () => pm.expect([200, 400, 409]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200) pm.environment.set('listingPropertyId', pm.response.json().property.id);",
+                  "else console.log('close refused:', pm.response.json());"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Relist a property",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/properties/{{listingPropertyId}}/listings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "{{listingPropertyId}}",
+                "listings"
+              ]
+            },
+            "description": "After the property's listings are all rented or removed: 201, a new draft with rent, advance months and negotiable copied (available-from only if it isn't past). An open or rejected listing on the property: 409 `PROPERTY_HAS_OPEN_LISTING` with its `listingId`. Saves the new `listingId`."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('a known answer', () => pm.expect([201, 409]).to.include(pm.response.code));",
+                  "if (pm.response.code === 201) pm.environment.set('listingId', pm.response.json().id);",
+                  "else console.log('relist refused:', pm.response.json());"
                 ]
               }
             }
