@@ -57,9 +57,9 @@ Validation errors also list the fields (values are never echoed back):
 | `DRAFT_LISTING_LIMIT` | 409 | listing create | "You have `max` unfinished listings: finish or delete one first" |
 | `NO_FIELDS_TO_UPDATE` | 400 | listing edit | A bug in the app's request (empty PATCH): log it |
 | `LISTING_NOT_FOUND` | 404 | listing edit / delete | Gone (deleted on another device): refresh "My listings" |
-| `INVALID_LISTING_STATE` | 409 | listing edit / delete / submit / withdraw | The listing moved on (for example it was already submitted, or staff decided): refresh "My listings" |
+| `INVALID_LISTING_STATE` | 409 | listing edit / delete / submit / withdraw / reopen | The listing moved on (for example it was already submitted, or staff decided): refresh "My listings" |
 | `VERIFICATION_REQUIRED` | 403 | submit | Start identity verification first ("Verify your ID to publish"), then submit again |
-| `LISTING_INCOMPLETE` | 400 | submit | Fields still empty: `missing` lists them (the same list the listing shows); jump to the first |
+| `LISTING_INCOMPLETE` | 400 | submit, reopen, edit | Fields still empty (or an edit that would empty them after submitting): `missing` lists them; jump to the first |
 | `NOT_ENOUGH_PHOTOS` | 400 | submit | "Add at least `min` photos" |
 | `ACTIVE_LISTING_LIMIT` | 409 | submit | "You already have `max` listings in review or live: close one first" |
 
@@ -279,9 +279,25 @@ Body: any of the fields above (`{}` is fine). → `201` with the listing (below)
 
 ### `PATCH /listings/:id`
 
-Body: the fields to change. → `200` with the listing. Only drafts for now (other states come
-with submitting and editing after review). Errors: as POST, plus `NO_FIELDS_TO_UPDATE`,
-`LISTING_NOT_FOUND`, `INVALID_LISTING_STATE`.
+Body: the fields to change. → `200` with the listing. **Always read `status` from the answer**:
+an edit can move a live listing back to review. What an edit does depends on the state:
+
+| Status | An edit… |
+| --- | --- |
+| `draft`, `rejected` | applies; fields may be cleared in a draft only |
+| `pending_review` | applies; it stays in review |
+| `live`, `stale` | `monthlyRentBirr`, `availableFrom`, `negotiable`: apply at once, it stays live. **Any other field (including the pin, and photos once they exist): the listing goes back to `pending_review` and is hidden until staff approve it again** |
+| `expired` | applies; a field that needs review sets `needsReview` (reopening then goes to review) |
+| `rented`, `removed` | refused (`409 INVALID_LISTING_STATE`): relist instead (coming next) |
+
+- Before saving a change to a live listing that needs review, **warn the lister**: "Changing
+  this sends your listing back for review. It will be hidden until it's approved." Rent,
+  available-from and negotiable don't need the warning.
+- Outside a draft, a required field can't be emptied: `400 LISTING_INCOMPLETE` with `missing`.
+- Sending values that are already there changes nothing (no review, no new `version`).
+
+Errors: as POST, plus `NO_FIELDS_TO_UPDATE`, `LISTING_INCOMPLETE`, `LISTING_NOT_FOUND`,
+`INVALID_LISTING_STATE`.
 
 ### `DELETE /listings/:id`
 
@@ -311,6 +327,14 @@ resubmitted; show them only while `status` is `rejected`.
 No body. Takes a listing in review back to `draft` (to fix something before staff look at it).
 → `200` with the listing. Not in review: `409 INVALID_LISTING_STATE`.
 
+### `POST /listings/:id/reopen`
+
+No body. For an `expired` listing ("Is this still available? Confirm the details to reopen it").
+→ `200` with the listing: `live` again, or `pending_review` if `needsReview` was set or it was
+never approved. Show which before they confirm: `needsReview: true` → "It will be reviewed again
+before it's live". The same checks as submit (`VERIFICATION_REQUIRED`, `NOT_ENOUGH_PHOTOS`,
+`ACTIVE_LISTING_LIMIT`…); not expired: `409 INVALID_LISTING_STATE`.
+
 ### `GET /me/listings`
 
 → `200` with all of your listings in every state, newest first (no paging: a lister has only a
@@ -323,7 +347,7 @@ few).
   "id": "…", "status": "draft", "version": 3,
   "missing": ["landmark", "availableFrom"],
   "monthlyRentBirr": 25000, "advanceMonths": 2, "negotiable": true, "availableFrom": null,
-  "closeReason": null, "staffReasonCode": null, "listerNote": null,
+  "closeReason": null, "staffReasonCode": null, "listerNote": null, "needsReview": false,
   "property": {
     "id": "…",
     "subCity": { "id": "…", "nameEn": "Bole", "nameAm": "ቦሌ" },
@@ -350,6 +374,8 @@ few).
 - **`neighbourhood.active: false`**: staff removed it from the list. The listing keeps it, but it
   can't be picked again.
 - **`version`** goes up on every real change (sending the same values again doesn't count).
+- **`needsReview`** (expired listings): reopening will send it to review instead of straight
+  back to live.
 - Amenities come back in a fixed order (`parking`, `gated_compound`, `guard`).
 
 ### A pin outside Addis Ababa

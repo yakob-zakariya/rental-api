@@ -69,6 +69,8 @@ interface LockedListing {
   id: string;
   status: ListingStatus;
   property_id: string;
+  needs_review: boolean;
+  published_at: Date | null;
 }
 
 /** Where a lister may submit from (L9). */
@@ -77,9 +79,38 @@ const SUBMITTABLE: readonly ListingStatus[] = [
   ListingStatus.Rejected,
 ];
 
+/** No edits: relist instead (L5, L11). */
+const CLOSED: readonly ListingStatus[] = [
+  ListingStatus.Rented,
+  ListingStatus.Removed,
+];
+
+/** Live to the public: an edit that needs review sends these back to pending_review (L5). */
+const PUBLISHED: readonly ListingStatus[] = [
+  ListingStatus.Live,
+  ListingStatus.Stale,
+];
+
+/** Whose rent and available-from changes go into listing_history (L5, L6). */
+const RECORDED: readonly ListingStatus[] = [
+  ...PUBLISHED,
+  ListingStatus.Expired,
+];
+
 /**
- * The lister's side of listings (spec section 3): drafts (T2.2), submit and withdraw (T2.3).
- * Editing in other states, closing and relisting come in T2.4–T2.5.
+ * The fields a live listing changes without going back to review (L5). Every other field,
+ * including the location and (from T3.2) the photos, needs review.
+ */
+const APPLY_AT_ONCE = [
+  'monthlyRentBirr',
+  'availableFrom',
+  'negotiable',
+] as const;
+type ApplyAtOnceField = (typeof APPLY_AT_ONCE)[number];
+
+/**
+ * The lister's side of listings (spec section 3): drafts (T2.2), submit and withdraw (T2.3),
+ * editing in every state and reopening (T2.4). Closing and relisting come in T2.5.
  */
 @Injectable()
 export class ListingsService {
@@ -155,10 +186,18 @@ export class ListingsService {
   }
 
   /**
-   * Edits a draft (L5; other states from T2.4). A missing field is kept, null clears it. Only
-   * real changes count: they add 1 to `version`; the same values again change nothing.
-   * Errors: as create, plus 400 NO_FIELDS_TO_UPDATE, 404 LISTING_NOT_FOUND (L3), 409
-   * INVALID_LISTING_STATE.
+   * Edits a listing (L5, L6). A missing field is kept, null clears it; only real changes count,
+   * and each adds 1 to `version`. What an edit does depends on the state:
+   * - draft, rejected, pending_review: applies (pending_review stays in the queue; the new version
+   *   makes a reviewer's decision on the old one fail, R2);
+   * - live, stale: rent, available-from and negotiable apply at once; any other field sends the
+   *   listing back to pending_review, hidden from browse until approved;
+   * - expired: applies; a field that needs review sets needs_review, for reopening (L6);
+   * - rented, removed: refused (relist instead, L11).
+   * Rent and available-from changes of a live, stale or expired listing go into listing_history.
+   * Outside draft, a change can't empty a required field (decided 2026-11-24).
+   * Errors: as create, plus 400 NO_FIELDS_TO_UPDATE / LISTING_INCOMPLETE, 404 LISTING_NOT_FOUND
+   * (L3), 409 INVALID_LISTING_STATE.
    */
   async update(
     userId: string,
@@ -172,7 +211,7 @@ export class ListingsService {
 
     await this.dataSource.transaction(async (manager) => {
       const locked = await lockMine(manager, userId, id);
-      if (locked.status !== ListingStatus.Draft) throw invalidState();
+      if (CLOSED.includes(locked.status)) throw invalidState();
 
       const property = await manager
         .createQueryBuilder(Property, 'p')
@@ -200,6 +239,32 @@ export class ListingsService {
         locationChanged;
       if (!changed) return;
 
+      // Drafts may be half-filled; past draft a listing stays complete (Q1, 2026-11-24). The
+      // check runs on plain copies with the changes applied (entities are plain data).
+      if (locked.status !== ListingStatus.Draft) {
+        const missing = missingFields(
+          Object.assign({}, listing, listingChanges),
+          Object.assign({}, property, propertyChanges, {
+            location: locationChanged
+              ? toPoint(body.location ?? null)
+              : property.location,
+          }),
+        );
+        if (missing.length > 0)
+          throw new BadRequestException({
+            code: 'LISTING_INCOMPLETE',
+            missing,
+          });
+      }
+
+      const needsReview =
+        Object.keys(propertyChanges).length > 0 ||
+        locationChanged ||
+        Object.keys(listingChanges).some(
+          (field) => !APPLY_AT_ONCE.includes(field as ApplyAtOnceField),
+        );
+      const backToReview = needsReview && PUBLISHED.includes(locked.status);
+
       if (Object.keys(propertyChanges).length > 0)
         await manager.update(Property, property.id, propertyChanges);
       if (locationChanged)
@@ -207,7 +272,37 @@ export class ListingsService {
       await manager.update(Listing, id, {
         ...listingChanges,
         version: () => 'version + 1',
+        ...(backToReview && {
+          status: ListingStatus.PendingReview,
+          submittedAt: () => 'now()',
+        }),
+        ...(needsReview &&
+          locked.status === ListingStatus.Expired && { needsReview: true }),
       });
+
+      // History: what the public saw change (overview §6).
+      if (RECORDED.includes(locked.status)) {
+        if (listingChanges.monthlyRentBirr !== undefined)
+          await recordValueChange(manager, id, userId, {
+            event: ListingHistoryEvent.MonthlyRent,
+            oldMonthlyRentBirr: listing.monthlyRentBirr,
+            newMonthlyRentBirr: listingChanges.monthlyRentBirr,
+          });
+        if (listingChanges.availableFrom !== undefined)
+          await recordValueChange(manager, id, userId, {
+            event: ListingHistoryEvent.AvailableFrom,
+            oldAvailableFrom: listing.availableFrom,
+            newAvailableFrom: listingChanges.availableFrom,
+          });
+      }
+      if (backToReview)
+        await recordStatusChange(
+          manager,
+          id,
+          locked.status,
+          ListingStatus.PendingReview,
+          userId,
+        );
     });
     return this.getMine(userId, id);
   }
@@ -280,6 +375,43 @@ export class ListingsService {
         id,
         ListingStatus.PendingReview,
         ListingStatus.Draft,
+        userId,
+      );
+    });
+    return this.getMine(userId, id);
+  }
+
+  /**
+   * Reopens an expired listing by confirming its details (L6): back to live, or to review if it
+   * was changed in a way that needs review (needs_review) or was never approved (published_at
+   * empty; decided 2026-11-24, so L4 holds for a listing that expired while in review). Checks L2
+   * like submitting, counts as a confirmation (last_confirmed_at, restarting the weekly checks),
+   * and keeps the original published_at, so it doesn't jump to the top of "newest" (decided
+   * 2026-11-24).
+   * Errors: as submit; 409 INVALID_LISTING_STATE if it isn't expired.
+   */
+  async reopen(userId: string, id: string): Promise<MyListingDto> {
+    await this.dataSource.transaction(async (manager) => {
+      const verification = await lockUser(manager, userId);
+      const locked = await lockMine(manager, userId, id);
+      if (locked.status !== ListingStatus.Expired) throw invalidState();
+
+      await this.assertCanBecomeActive(manager, userId, verification, locked);
+      const toReview = locked.needs_review || locked.published_at === null;
+      const status = toReview
+        ? ListingStatus.PendingReview
+        : ListingStatus.Live;
+      await manager.update(Listing, id, {
+        status,
+        needsReview: false,
+        lastConfirmedAt: () => 'now()',
+        ...(toReview && { submittedAt: () => 'now()' }),
+      });
+      await recordStatusChange(
+        manager,
+        id,
+        ListingStatus.Expired,
+        status,
         userId,
       );
     });
@@ -389,6 +521,28 @@ async function recordStatusChange(
   });
 }
 
+/** A rent or available-from row in listing_history, in the caller's transaction (L5). */
+async function recordValueChange(
+  manager: EntityManager,
+  listingId: string,
+  userId: string,
+  change: Pick<
+    Partial<ListingHistory>,
+    | 'event'
+    | 'oldMonthlyRentBirr'
+    | 'newMonthlyRentBirr'
+    | 'oldAvailableFrom'
+    | 'newAvailableFrom'
+  >,
+): Promise<void> {
+  await manager.insert(ListingHistory, {
+    listingId,
+    ...change,
+    actorType: ActorType.User,
+    actorId: userId,
+  });
+}
+
 /**
  * Locks the listing and its property for the rest of the transaction, so two edits at once can't
  * overwrite each other or skip a version. Someone else's listing is 404, the same as a missing one
@@ -400,7 +554,7 @@ async function lockMine(
   id: string,
 ): Promise<LockedListing> {
   const [row] = await manager.query<LockedListing[]>(
-    `SELECT l.id, l.status, l.property_id
+    `SELECT l.id, l.status, l.property_id, l.needs_review, l.published_at
      FROM listings l JOIN properties p ON p.id = l.property_id
      WHERE l.id = $1 AND p.lister_id = $2
      FOR UPDATE OF l, p`,
@@ -497,6 +651,9 @@ function samePoint(current: Point | null, next: LatLngDto | null): boolean {
   );
 }
 
+const toPoint = (location: LatLngDto | null): Point | null =>
+  location && { type: 'Point', coordinates: [location.lng, location.lat] };
+
 const toLatLng = (point: Point | null) =>
   point ? { lat: point.coordinates[1], lng: point.coordinates[0] } : null;
 
@@ -516,6 +673,7 @@ function toMyListing(listing: Listing): MyListingDto {
     closeReason: listing.closeReason,
     staffReasonCode: listing.staffReasonCode,
     listerNote: listing.listerNote,
+    needsReview: listing.needsReview,
     property: {
       id: property.id,
       neighbourhood: neighbourhood && {

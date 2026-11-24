@@ -213,6 +213,27 @@ a submit by hand always stops at the photo check; the automated tests cover a su
 | To try withdraw: in psql `UPDATE listings SET status = 'pending_review' WHERE id = '<id>';`, then withdraw | 200, `status: draft`; `SELECT * FROM listing_history WHERE listing_id = '<id>';` shows the change |
 | Submit or withdraw someone else's listing | 404 `LISTING_NOT_FOUND` |
 
+**Editing after submitting, and reopening (L5, L6).** Put a complete listing into a state with
+psql first, e.g. live: `UPDATE listings SET status = 'live', published_at = now() WHERE id = '<id>';`
+(expired: `status = 'expired'`). `SELECT event, old_status, new_status, old_monthly_rent_birr,
+new_monthly_rent_birr FROM listing_history WHERE listing_id = '<id>' ORDER BY created_at;` shows
+what was recorded.
+
+| Try | Expect |
+| --- | --- |
+| Live: `PATCH { "monthlyRentBirr": 23000 }` | 200, still `live`; a `monthly_rent` history row (old and new rent) |
+| Live: `PATCH { "negotiable": false }` | 200, still `live`; nothing recorded |
+| Live: `PATCH { "description": "…" }` (or any other field, or the pin) | 200, `status: pending_review` (hidden until approved); a status history row |
+| Live: `PATCH` with its own current values | 200, still `live`, `version` unchanged |
+| In review: `PATCH { "bedrooms": 3 }` | 200, stays `pending_review`, `version` + 1 |
+| Live or in review: `PATCH { "description": null }` | 400 `LISTING_INCOMPLETE`, `missing: ["description"]` |
+| Rented or removed: any PATCH | 409 `INVALID_LISTING_STATE` |
+| Expired: `PATCH { "bedrooms": 4 }` | 200, stays `expired`, `needsReview: true` |
+| Expired, nothing that needs review changed: `POST /listings/<id>/reopen` (verified user) | until Step 3: 400 `NOT_ENOUGH_PHOTOS`; after: 200 `live`, `last_confirmed_at` set, `published_at` unchanged |
+| Expired with `needsReview`, or never approved (`published_at` empty): reopen | (after Step 3) 200 `pending_review` |
+| In psql: `UPDATE listings SET status = 'pending_review' WHERE id = '<id>';` then `… SET status = 'expired' …` | `needs_review` becomes true by itself (database trigger) |
+| Reopen a listing that isn't expired | 409 `INVALID_LISTING_STATE` |
+
 ## Worth trying on purpose
 
 | Try | Expect |

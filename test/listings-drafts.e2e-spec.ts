@@ -695,18 +695,7 @@ describe('listings: drafts (e2e, T2.2)', () => {
       expect((await mine(owner))[0].property.bedrooms).toBeNull();
     });
 
-    it.each(['pending_review', 'live', 'expired'])(
-      'a %s listing is 409 INVALID_LISTING_STATE (editing outside draft comes in T2.4)',
-      async (status) => {
-        const who = await lister();
-        const id = await draft(who, full);
-        await setStatus(id, status);
-
-        const { body } = await patch(who, id, { bedrooms: 3 }).expect(409);
-
-        expect(body.code).toBe('INVALID_LISTING_STATE');
-      },
-    );
+    // Editing in the other states (L5, L6) is covered in listings-edit.e2e-spec.ts (T2.4).
 
     it('two edits at the same moment both apply, and both count in version', async () => {
       const who = await lister();

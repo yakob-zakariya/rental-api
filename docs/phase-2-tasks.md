@@ -44,9 +44,9 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
 - [x] **T2.3 Submit and withdraw.** L2 (verified, complete, 3+ photos — tested with a fake photo
       count until Step 3 — and the cap), L4, `listing_history` rows; tests.
       Done 2026-11-23: `PhotoCounter` answers 0 until T3.2 (which must replace `NoPhotosYet`).
-- [ ] **T2.4 Editing after submission.** L5 and L6 (which fields send a listing back to review,
+- [x] **T2.4 Editing after submission.** L5 and L6 (which fields send a listing back to review,
       rent and available-from recorded, `needs_review` on expired, reopen); tests for each field
-      group and state.
+      group and state. Done 2026-11-24, with the never-approved and expired-in-review rules (L6).
 - [ ] **T2.5 Close and relist.** L11, L12 (`close`, the three reasons, relist copying fields);
       tests.
 
@@ -58,7 +58,9 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
       tests against MinIO.
 - [ ] **T3.2 Upload pipeline.** Upload, delete, reorder; type and size checks, at most 12, the
       3-photo floor on delete (P1, P4); re-encoding and removing all metadata (P2); tests,
-      including a JPEG with EXIF GPS.
+      including a JPEG with EXIF GPS. Replace `NoPhotosYet` (T2.3) with a count of
+      `property_photos`. Photo changes follow L5 like any field that needs review: +1 `version`;
+      a live or stale listing goes back to review, an expired one gets `needs_review`.
 - [ ] **T3.3 Photo hashing.** Choose the library after reading its docs; test it on resized and
       recompressed copies and on different photos; set `PHOTO_HASH_MAX_DISTANCE` from the results;
       match only other listers' photos (P3); tests.
@@ -104,7 +106,9 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
 ## Step 7 — Bans
 
 - [ ] **T7.1 Ban and unban with listings.** The ban expires open listings and deletes devices;
-      unban leaves listings expired (L8, N2); browse hides non-active listers; tests.
+      unban leaves listings expired (L8, N2); browse hides non-active listers; tests. The T2.4
+      test "live → edit → pending_review → ban → unban → reopen" expires the listing with SQL
+      for now: drop that line once the ban does it.
 
 ## Step 8 — Flutter app (repo: `rental-app`)
 

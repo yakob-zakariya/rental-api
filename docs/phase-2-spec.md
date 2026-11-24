@@ -270,11 +270,23 @@ Any other transition: 409 `INVALID_LISTING_STATE`. **Active** means `pending_rev
     approved**.
   - `rented`, `removed`: no edits; relist instead (L11).
   - `expired`: see L6.
+
+  Outside `draft`, a change that would empty a required field (L2's list) is refused: 400
+  `LISTING_INCOMPLETE` with `missing`, nothing changed (decided 2026-11-24). Every real change
+  adds 1 to `version`, in every state.
 - **L6** An `expired` listing is reopened by the lister confirming its details. Edits to an
   expired listing are allowed; one that needs review under L5 sets `needs_review`. Reopening
   then goes to `pending_review` if `needs_review`, or straight back to `live` if not. Rent and
   available-from changes are recorded as in L5. Reopening checks L2 and counts as a confirmation
   (`last_confirmed_at`).
+
+  Decided 2026-11-24, so that nothing unreviewed goes live (L4):
+  - Reopening also goes to `pending_review` if the listing was **never approved**
+    (`published_at` empty).
+  - Whenever a listing moves from `pending_review` to `expired` (a ban, L8, or any other path),
+    `needs_review` is set. A database trigger does it, so every code path is covered.
+  - Reopening straight to `live` keeps the original `published_at`, so a reopened listing
+    doesn't jump to the top of "newest".
 - **L7** The listing shows the lister's first name, the initial of their father's name and a
   verified badge (for example "Abebe K."), taken from the verified `full_name` (first word, and
   the first letter of the second word; one word only → that word). The full name is never
@@ -542,6 +554,10 @@ MinIO or a fake `PhotoStorage`; tests never call FCM.
 - **Service area (2026-11-10):** strict, no margin outside the OpenStreetMap boundary. A refused
   pin gets a friendly message in the app and is recorded rounded to about 1 km, with no user
   link. → G1
+- **Editing after submitting (2026-11-24):** outside draft a required field can't be emptied
+  (`LISTING_INCOMPLETE`); reopening goes to review if the listing needs review or was never
+  approved; a listing that expires while in review is marked `needs_review` (database trigger);
+  reopening keeps the original `published_at`. → L5, L6
 - **Submit and withdraw (2026-11-23):** until photos exist (T3.2), the API counts 0 photos for
   every property, so nothing can be submitted outside the tests. Withdrawing is allowed at the
   draft limit; a passed available-from date doesn't block submitting. → L1, L2, L13

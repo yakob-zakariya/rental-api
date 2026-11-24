@@ -331,16 +331,17 @@ describe('listings: submit and withdraw (e2e, T2.3)', () => {
       await submit(who, id).expect(200);
     });
 
-    it('after submitting, the listing is no longer a draft: PATCH and DELETE are refused (editing in review comes in T2.4)', async () => {
+    it('in review it can still be edited (it stays in review, L5) but not deleted', async () => {
       const who = await lister();
       const id = await draft(who);
       await submit(who, id).expect(200);
 
-      await http()
+      const { body } = await http()
         .patch(`/listings/${id}`)
         .set(auth(who))
         .send({ bedrooms: 3 })
-        .expect(409);
+        .expect(200);
+      expect(body.status).toBe('pending_review');
       await http().delete(`/listings/${id}`).set(auth(who)).expect(409);
     });
   });

@@ -55,9 +55,11 @@ export class ListingsController {
   }
 
   /**
-   * Edits a draft: a missing field is kept, null clears it.
-   * Errors: as POST, plus 400 NO_FIELDS_TO_UPDATE, 404 LISTING_NOT_FOUND, 409
-   * INVALID_LISTING_STATE (not a draft).
+   * Edits a listing: a missing field is kept, null clears it. On a live or stale listing, any
+   * change except rent, available-from and negotiable sends it back to review (the answer's
+   * `status` shows it). Errors: as POST, plus 400 NO_FIELDS_TO_UPDATE, LISTING_INCOMPLETE (a
+   * required field emptied after submitting), 404 LISTING_NOT_FOUND, 409 INVALID_LISTING_STATE
+   * (rented or removed).
    */
   @Patch('listings/:id')
   @ApiOkResponse({ type: MyListingDto })
@@ -97,6 +99,20 @@ export class ListingsController {
     @Param('id', listingId) id: string,
   ): Promise<MyListingDto> {
     return this.listings.withdraw(user.id, id);
+  }
+
+  /**
+   * Reopens an expired listing (L6): back to live, or to review if it changed in a way that
+   * needs review or was never approved. Errors: as submit.
+   */
+  @Post('listings/:id/reopen')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: MyListingDto })
+  reopen(
+    @CurrentUser() user: User,
+    @Param('id', listingId) id: string,
+  ): Promise<MyListingDto> {
+    return this.listings.reopen(user.id, id);
   }
 
   /** Deletes a draft. Errors: 404 LISTING_NOT_FOUND, 409 INVALID_LISTING_STATE (not a draft). */

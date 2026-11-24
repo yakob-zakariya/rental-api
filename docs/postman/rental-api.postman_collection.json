@@ -1387,7 +1387,7 @@
     },
     {
       "name": "8. Listings",
-      "description": "The lister's drafts (T2.2), submit and withdraw (T2.3), with the app token. Review and browsing come later.",
+      "description": "The lister's listings (T2.2–T2.4), with the app token: drafts, submit, withdraw, editing in every state, reopen. Review and browsing come later.",
       "item": [
         {
           "name": "Create an empty draft",
@@ -1539,7 +1539,7 @@
                 "{{listingId}}"
               ]
             },
-            "description": "200; `version` goes up by 1. Send it again: `version` stays (nothing changed).",
+            "description": "200; `version` goes up by 1. Send it again: `version` stays (nothing changed). On a live or stale listing, rent, available-from and negotiable apply at once (rent and date are recorded in the history); any other field sends it back to `pending_review`: check `status` in the answer.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"monthlyRentBirr\": 18000\n}",
@@ -1800,6 +1800,38 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('a known answer', () => pm.expect([200, 409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reopen an expired listing",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/listings/{{listingId}}/reopen",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "listings",
+                "{{listingId}}",
+                "reopen"
+              ]
+            },
+            "description": "Expired → `live` (nothing changed that needs review) or `pending_review` (`needsReview`, or never approved). Checks the same things as submit, so **until photos exist (Step 3) it ends in 400 `NOT_ENOUGH_PHOTOS`**. Not expired: 409 `INVALID_LISTING_STATE`. To try it, expire the listing in psql first (manual-testing.md)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('a known answer', () => pm.expect([200, 400, 403, 409]).to.include(pm.response.code));",
+                  "if (pm.response.code !== 200) console.log('reopen refused:', pm.response.json());"
                 ]
               }
             }

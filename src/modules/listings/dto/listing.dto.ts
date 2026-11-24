@@ -314,6 +314,11 @@ export class MyListingDto {
     description: "Staff's note with that decision",
   })
   listerNote: string | null;
+  @ApiProperty({
+    description:
+      'Expired only: it was changed in a way that needs review, so reopening sends it to review instead of straight back to live',
+  })
+  needsReview: boolean;
   @ApiProperty({ type: MyPropertyDto }) property: MyPropertyDto;
   @ApiProperty() createdAt: Date;
   @ApiProperty() updatedAt: Date;
