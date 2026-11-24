@@ -1,6 +1,6 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { EntityManager, QueryFailedError } from 'typeorm';
-import type { VerificationStatus } from '../users/user.enums.js';
+import type { UserStatus, VerificationStatus } from '../users/user.enums.js';
 import { ListingHistory } from './listing-history.entity.js';
 import { Listing } from './listing.entity.js';
 import {
@@ -61,20 +61,26 @@ export const RECORDED: readonly ListingStatus[] = [
   ListingStatus.Expired,
 ];
 
+export interface LockedUser {
+  verification_status: VerificationStatus;
+  status: UserStatus;
+}
+
 /**
  * Locks the user's row for the rest of the transaction, so the user's draft and active counts
- * can't change underneath a create or a submit (two at once would otherwise both fit under a
- * limit). Returns their verification status as it is now, for L2. Always taken before any
- * listing lock.
+ * can't change underneath a create, a submit or an approval (two at once would otherwise both fit
+ * under a limit). Returns their statuses as they are now, for L2 and R3. Always taken before any
+ * listing lock, by listers and staff alike, so the two can't deadlock.
  */
 export async function lockUser(
   manager: EntityManager,
   userId: string,
-): Promise<VerificationStatus> {
-  const [row] = await manager.query<
-    { verification_status: VerificationStatus }[]
-  >(`SELECT verification_status FROM users WHERE id = $1 FOR UPDATE`, [userId]);
-  return row.verification_status;
+): Promise<LockedUser> {
+  const [row] = await manager.query<LockedUser[]>(
+    `SELECT verification_status, status FROM users WHERE id = $1 FOR UPDATE`,
+    [userId],
+  );
+  return row;
 }
 
 const LOCKED_COLUMNS = `l.id, l.status, l.property_id, l.needs_review, l.published_at`;
@@ -99,6 +105,33 @@ export async function lockMine(
   );
   if (!row) throw listingNotFound();
   return row;
+}
+
+/**
+ * For staff decisions (R2): locks the listing's lister, then the listing and its property, in the
+ * same order as the lister's own changes. The lister is looked up first without a lock (a listing
+ * never changes owner). Errors: 404 LISTING_NOT_FOUND.
+ */
+export async function lockListingForStaff(
+  manager: EntityManager,
+  id: string,
+): Promise<
+  LockedListing & { version: number; lister: LockedUser; lister_id: string }
+> {
+  const [owner] = await manager.query<{ lister_id: string }[]>(
+    `SELECT p.lister_id FROM listings l JOIN properties p ON p.id = l.property_id WHERE l.id = $1`,
+    [id],
+  );
+  if (!owner) throw listingNotFound();
+  const lister = await lockUser(manager, owner.lister_id);
+  const [row] = await manager.query<(LockedListing & { version: number })[]>(
+    `SELECT ${LOCKED_COLUMNS}, l.version
+     FROM listings l JOIN properties p ON p.id = l.property_id
+     WHERE l.id = $1
+     FOR UPDATE OF l, p`,
+    [id],
+  );
+  return { ...row, lister, lister_id: owner.lister_id };
 }
 
 /**
@@ -166,23 +199,30 @@ export async function applyChangeEffects(
   return backToReview;
 }
 
-/** A status row in listing_history, in the caller's transaction (overview §6). */
+/**
+ * A status row in listing_history, in the caller's transaction (overview §6). The actor is the
+ * lister (`actorId`) unless `extra.actorType` says staff; `extra` also carries the close and staff
+ * reasons.
+ */
 export async function recordStatusChange(
   manager: EntityManager,
   listingId: string,
   oldStatus: ListingStatus | null,
   newStatus: ListingStatus,
-  userId: string,
-  reason: Pick<Partial<ListingHistory>, 'closeReason'> = {},
+  actorId: string,
+  extra: Pick<
+    Partial<ListingHistory>,
+    'closeReason' | 'staffReasonCode' | 'actorType'
+  > = {},
 ): Promise<void> {
   await manager.insert(ListingHistory, {
     listingId,
     event: ListingHistoryEvent.Status,
     oldStatus,
     newStatus,
-    ...reason,
     actorType: ActorType.User,
-    actorId: userId,
+    ...extra,
+    actorId,
   });
 }
 

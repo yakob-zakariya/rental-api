@@ -65,6 +65,7 @@ describe('assertSafeDetails', () => {
         newNameEn: 'Piazza',
         oldNameAm: 'ፒያሳ',
         newNameAm: 'ፒያሳ',
+        listerNote: 'Please add a photo of the kitchen',
       }),
     ).not.toThrow();
     expect(() => assertSafeDetails({})).not.toThrow();
@@ -78,6 +79,7 @@ describe('assertSafeDetails', () => {
     'newNameEn',
     'oldNameAm',
     'newNameAm',
+    'listerNote',
   ] as const)(
     'rejects an ID number in %s with 400 NOTE_CONTAINS_ID_NUMBER',
     (key) => {

@@ -17,6 +17,8 @@ export interface AuditDetails {
   newNameEn?: string;
   oldNameAm?: string;
   newNameAm?: string;
+  /** What a listing decision told the lister (R4, R5). */
+  listerNote?: string;
 }
 
 const TEXT_KEYS = [
@@ -29,6 +31,7 @@ const TEXT_KEYS = [
   'newNameEn',
   'oldNameAm',
   'newNameAm',
+  'listerNote',
 ] as const;
 const ALLOWED_KEYS = new Set<string>([...TEXT_KEYS, 'enteredFields']);
 export const MAX_DETAIL_LENGTH = 1000;

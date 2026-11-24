@@ -5,6 +5,7 @@ import type { EnvironmentVariables } from '../../config/env.validation.js';
 import { ImageProcessor } from './image-processor.js';
 import { PhotoStorage } from './photo-storage.js';
 import { PropertyPhoto } from './property-photo.entity.js';
+import { NoPublicCache, PublicCache } from './public-cache.js';
 import { createS3Client } from './s3-client.js';
 import { S3PhotoStorage } from './s3-photo-storage.js';
 
@@ -16,6 +17,8 @@ import { S3PhotoStorage } from './s3-photo-storage.js';
   imports: [TypeOrmModule.forFeature([PropertyPhoto])],
   providers: [
     ImageProcessor,
+    // No CDN until production is chosen (Cloudflare's purge then, if it's behind Cloudflare).
+    { provide: PublicCache, useClass: NoPublicCache },
     {
       provide: PhotoStorage,
       inject: [ConfigService],
@@ -43,6 +46,6 @@ import { S3PhotoStorage } from './s3-photo-storage.js';
       },
     },
   ],
-  exports: [TypeOrmModule, PhotoStorage, ImageProcessor],
+  exports: [TypeOrmModule, PhotoStorage, ImageProcessor, PublicCache],
 })
 export class PhotosModule {}

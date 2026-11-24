@@ -9,6 +9,9 @@ export enum AdminActionType {
   NeighbourhoodUpdate = 'neighbourhood.update',
   NeighbourhoodDeactivate = 'neighbourhood.deactivate',
   NeighbourhoodReactivate = 'neighbourhood.reactivate',
+  ListingApprove = 'listing.approve',
+  ListingReject = 'listing.reject',
+  ListingTakedown = 'listing.takedown',
   /** A reviewer saw the lister's phone number (T4.1, decided 2026-11-24). */
   ListingRevealListerPhone = 'listing.reveal_lister_phone',
 }

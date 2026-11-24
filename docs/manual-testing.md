@@ -192,6 +192,21 @@ Submit a listing first (app token, 3 photos), then with the admin token:
 | The same as support | 403 `INSUFFICIENT_ROLE` |
 | The app token on `/admin/listings` | 401 |
 
+**Decisions (moderator+).** Open the listing's detail first: approve and reject need its `version`.
+
+| Try | Expect |
+| --- | --- |
+| `POST /admin/listings/<id>/approve { "version": <v> }` | 200, `live`; the photos open at their public URLs (`S3_PUBLIC_BASE_URL/<storage key>`, no credentials); the lister's `GET /me/listings` shows `live` |
+| The lister edits the description, then approve with the old version | 409 `LISTING_CHANGED` with the new `version` |
+| Approve twice, or approve then reject | 409 `ALREADY_DECIDED` |
+| In psql: `UPDATE users SET status = 'banned' WHERE id = '<lister>';` then approve | 409 `LISTER_NOT_ELIGIBLE` |
+| `POST /admin/listings/<id>/reject { "version": <v>, "reasonCode": "PHOTOS_UNCLEAR", "listerNote": "…", "note": "…" }` | 200, `rejected`; the lister sees `staffReasonCode` and `listerNote` (not the staff note) |
+| Reject with `"reasonCode": "GUIDELINES"` and a `listerNote` | 400 `LISTER_NOTE_NOT_ALLOWED` |
+| A live listing: `POST /admin/listings/<id>/takedown { "reasonCode": "GUIDELINES", "note": "…" }` | 200, `removed`; its public photo URLs now 404; the API log says what it would purge from the CDN |
+| Take down a listing in review | 409 `LISTING_NOT_REVIEWABLE` |
+| As support, any decision | 403 `INSUFFICIENT_ROLE` |
+| `GET /admin/actions` | `listing.approve` / `listing.reject` / `listing.takedown` rows with the notes |
+
 ## Listings: drafts (app token)
 
 Signed in with the app token (verification isn't needed to draft, L1). A draft may be

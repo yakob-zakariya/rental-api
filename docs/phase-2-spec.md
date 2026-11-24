@@ -504,17 +504,28 @@ Any other transition: 409 `INVALID_LISTING_STATE`. **Active** means `pending_rev
   admin and app tokens don't cross. Only `pending_review` listings can be approved or rejected:
   the row is locked; a second decision is 409 `ALREADY_DECIDED`, other states 409
   `LISTING_NOT_REVIEWABLE`; a `version` that isn't the listing's current one (the lister edited it
-  meanwhile) is 409 `LISTING_CHANGED`.
+  meanwhile) is 409 `LISTING_CHANGED` (with the current `version`). Locks are taken lister first,
+  then the listing, as in the lister's own changes, so the two can't deadlock (T4.2).
 - **R3** Approving checks again that the lister is `active`, `approved` and under the L2 cap (409
   `LISTER_NOT_ELIGIBLE` / `ACTIVE_LISTING_LIMIT`), since these may have changed since submitting.
-- **R4** Approve → `live`, `published_at` set, the freshness clock starts. Reject → `rejected`
+- **R4** Approve → `live`, `published_at` set, the freshness clock starts (decided 2026-11-24:
+  `published_at` only on the first approval, so a re-approved listing doesn't jump to the top of
+  "newest"; every approval sets `last_confirmed_at`, restarting the clock). Reject → `rejected`
   with a `reasonCode` (section 2 list) and an optional `listerNote` (at most 300 characters)
   that the lister sees, plus a staff-only `note` (1–1000 characters). Suspected fraud uses
-  `GUIDELINES` and no lister note that hints at why (hard rule 10). The S1 ID-number check applies
-  to both notes.
+  `GUIDELINES` and no lister note that hints at why (hard rule 10): a `GUIDELINES` decision with
+  a `listerNote` is refused, 400 `LISTER_NOTE_NOT_ALLOWED` (decided 2026-11-24). The S1 ID-number
+  check applies to both notes.
 - **R5** Takedown: a `live` or `stale` listing → `removed` with `close_reason = staff_takedown`,
   a `reasonCode` from the same list, and the same notes as R4.
 - **R6** Staff see the photos of non-live listings only through short-lived signed links (P5).
+- **R7 Public photos follow `live`** (T4.2, P5): every move into `live` (approve, reopen; later
+  restore from stale) publishes the listing's photos inside its transaction, so a listing never
+  goes live without them (a storage failure: 503 `STORAGE_UNAVAILABLE`, nothing changes); every
+  move out of `live` (back to review, close, takedown; later stale, expiry, ban) unpublishes them
+  after the commit, best effort. A takedown also purges them from the CDN (`PublicCache`; a
+  do-nothing one until production is chosen). Anything a failed step leaves public is removed by
+  an hourly reconciliation job (T4.4).
 
 ### Review web page
 One static HTML page served by the API at `/admin/review`, using the existing admin login and the
@@ -611,6 +622,10 @@ the local SeaweedFS (its own test buckets) or a fake `PhotoStorage`; tests never
 - **Service area (2026-11-10):** strict, no margin outside the OpenStreetMap boundary. A refused
   pin gets a friendly message in the app and is recorded rounded to about 1 km, with no user
   link. → G1
+- **Review decisions (2026-11-24):** re-approval keeps `published_at` and restarts the freshness
+  clock; no lister note with `GUIDELINES`; CDN purge on takedown through `PublicCache`
+  (Cloudflare when production is chosen); an hourly job removes public photos of listings that
+  aren't live (T4.4). → R4, R5, R7
 - **Photos (2026-11-24):** at most 50 MP per upload; reordering a live listing's photos applies
   without review; the 3-photo floor on delete applies to `pending_review`, `live` and `stale`
   only; the app resizes and compresses before uploading (the server still re-encodes). → P2, P4

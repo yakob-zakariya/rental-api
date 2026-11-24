@@ -17,6 +17,7 @@ import {
 } from './listing-state.js';
 import { ListingStatus } from './listings.enums.js';
 import { ListingsService } from './listings.service.js';
+import { PublicPhotos } from './public-photos.js';
 import {
   MAX_PHOTOS_PER_PROPERTY,
   MIN_PHOTOS_TO_SUBMIT,
@@ -48,6 +49,7 @@ export class PropertyPhotosService {
     private readonly images: ImageProcessor,
     private readonly storage: PhotoStorage,
     private readonly listings: ListingsService,
+    private readonly publicPhotos: PublicPhotos,
   ) {}
 
   /**
@@ -71,7 +73,7 @@ export class PropertyPhotosService {
     await this.storage.putPrivate(storageKey, photo.body, 'image/jpeg');
 
     try {
-      const listingId = await this.dataSource.transaction(async (manager) => {
+      const result = await this.dataSource.transaction(async (manager) => {
         const locked = await lockCurrentListingOfProperty(
           manager,
           userId,
@@ -92,12 +94,14 @@ export class PropertyPhotosService {
           bytes: photo.body.length,
           position: count,
         });
-        await applyChangeEffects(manager, locked, userId, {
+        const backToReview = await applyChangeEffects(manager, locked, userId, {
           needsReview: true,
         });
-        return locked.id;
+        return { id: locked.id, backToReview };
       });
-      return this.listings.getMine(userId, listingId);
+      // A live listing went back to review: its photos stop being public (P5).
+      if (result.backToReview) await this.publicPhotos.unpublish(propertyId);
+      return this.listings.getMine(userId, result.id);
     } catch (error) {
       await this.listings.deleteFiles([storageKey]);
       throw error;
@@ -114,8 +118,8 @@ export class PropertyPhotosService {
     propertyId: string,
     photoId: string,
   ): Promise<MyListingDto> {
-    const { listingId, storageKey } = await this.dataSource.transaction(
-      async (manager) => {
+    const { listingId, storageKey, backToReview } =
+      await this.dataSource.transaction(async (manager) => {
         const locked = await lockCurrentListingOfProperty(
           manager,
           userId,
@@ -143,13 +147,17 @@ export class PropertyPhotosService {
            WHERE property_id = $1 AND position > $2`,
           [propertyId, photo.position],
         );
-        await applyChangeEffects(manager, locked, userId, {
+        const backToReview = await applyChangeEffects(manager, locked, userId, {
           needsReview: true,
         });
-        return { listingId: locked.id, storageKey: photo.storageKey };
-      },
-    );
+        return {
+          listingId: locked.id,
+          storageKey: photo.storageKey,
+          backToReview,
+        };
+      });
     await this.listings.deleteFiles([storageKey]);
+    if (backToReview) await this.publicPhotos.unpublish(propertyId);
     return this.listings.getMine(userId, listingId);
   }
 

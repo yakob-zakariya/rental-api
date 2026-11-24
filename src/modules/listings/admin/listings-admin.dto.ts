@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  IsEnum,
   IsIn,
   IsInt,
   IsOptional,
@@ -55,6 +56,66 @@ export class AdminListingQuery {
   @IsOptional()
   @IsString()
   after?: string;
+}
+
+/** Staff's note to the lister with a decision (R4): what they see. */
+export const MAX_LISTER_NOTE_LENGTH = 300;
+
+const VERSION = {
+  description:
+    'The version shown in the detail; a listing the lister has changed since is refused (409 LISTING_CHANGED, R2)',
+  minimum: 1,
+};
+const LISTER_NOTE = {
+  maxLength: MAX_LISTER_NOTE_LENGTH,
+  description:
+    'Shown to the lister. Not allowed with GUIDELINES (400 LISTER_NOTE_NOT_ALLOWED): suspected fraud is never explained (hard rule 10). Never put ID numbers here.',
+};
+const STAFF_NOTE = {
+  maxLength: MAX_DETAIL_LENGTH,
+  description: 'Staff only (in the audit log). Never put ID numbers here.',
+};
+
+export class ApproveListingDto {
+  @ApiProperty(VERSION)
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  version: number;
+
+  @ApiPropertyOptional(STAFF_NOTE)
+  @IsOptional()
+  @IsString()
+  @Length(1, MAX_DETAIL_LENGTH)
+  note?: string;
+}
+
+export class TakedownListingDto {
+  @ApiProperty({
+    enum: StaffReasonCode,
+    description: 'GUIDELINES for suspected fraud (neutral)',
+  })
+  @IsEnum(StaffReasonCode)
+  reasonCode: StaffReasonCode;
+
+  @ApiPropertyOptional(LISTER_NOTE)
+  @IsOptional()
+  @IsString()
+  @Length(1, MAX_LISTER_NOTE_LENGTH)
+  listerNote?: string;
+
+  @ApiProperty(STAFF_NOTE)
+  @IsString()
+  @Length(1, MAX_DETAIL_LENGTH)
+  note: string;
+}
+
+export class RejectListingDto extends TakedownListingDto {
+  @ApiProperty(VERSION)
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  version: number;
 }
 
 export class RevealListerPhoneDto {

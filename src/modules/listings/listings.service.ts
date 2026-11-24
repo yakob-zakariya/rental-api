@@ -26,6 +26,7 @@ import {
   applyChangeEffects,
   CLOSABLE,
   CLOSED,
+  PUBLISHED,
   invalidState,
   listingNotFound,
   type LockedListing,
@@ -49,6 +50,7 @@ import {
   OPEN_LISTING_STATUSES,
 } from './listings.enums.js';
 import { MIN_PHOTOS_TO_SUBMIT, PhotoCounter } from './photo-counter.js';
+import { PublicPhotos } from './public-photos.js';
 import { Property } from './property.entity.js';
 
 /** Body fields stored on the property (the location is handled on its own) and on the listing. */
@@ -107,6 +109,7 @@ export class ListingsService {
     private readonly serviceArea: ServiceAreaService,
     private readonly photos: PhotoCounter,
     private readonly storage: PhotoStorage,
+    private readonly publicPhotos: PublicPhotos,
     config: ConfigService<EnvironmentVariables, true>,
   ) {
     this.maxDrafts = config.get('MAX_DRAFT_LISTINGS', { infer: true });
@@ -185,7 +188,7 @@ export class ListingsService {
     assertWithinLimits(body);
     if (body.location) await this.requireInside(body.location);
 
-    await this.dataSource.transaction(async (manager) => {
+    const leftLive = await this.dataSource.transaction(async (manager) => {
       const locked = await lockMine(manager, userId, id);
       if (CLOSED.includes(locked.status)) throw invalidState();
 
@@ -244,7 +247,7 @@ export class ListingsService {
         await manager.update(Property, property.id, propertyChanges);
       if (locationChanged)
         await setLocation(manager, property.id, body.location ?? null);
-      await applyChangeEffects(manager, locked, userId, {
+      const backToReview = await applyChangeEffects(manager, locked, userId, {
         needsReview,
         fields: listingChanges as Partial<Listing>,
       });
@@ -264,7 +267,10 @@ export class ListingsService {
             newAvailableFrom: listingChanges.availableFrom,
           });
       }
+      return backToReview ? locked.property_id : null;
     });
+    // Back in review: hidden from browse, so its photos stop being public (P5).
+    if (leftLive) await this.publicPhotos.unpublish(leftLive);
     return this.getMine(userId, id);
   }
 
@@ -325,7 +331,10 @@ export class ListingsService {
   async submit(userId: string, id: string): Promise<MyListingDto> {
     await this.dataSource.transaction(async (manager) => {
       // The user first, then the listing: the same order as every other path that takes both.
-      const verification = await lockUser(manager, userId);
+      const { verification_status: verification } = await lockUser(
+        manager,
+        userId,
+      );
       const locked = await lockMine(manager, userId, id);
       if (!SUBMITTABLE.includes(locked.status)) throw invalidState();
 
@@ -379,7 +388,10 @@ export class ListingsService {
    */
   async reopen(userId: string, id: string): Promise<MyListingDto> {
     await this.dataSource.transaction(async (manager) => {
-      const verification = await lockUser(manager, userId);
+      const { verification_status: verification } = await lockUser(
+        manager,
+        userId,
+      );
       const locked = await lockMine(manager, userId, id);
       if (locked.status !== ListingStatus.Expired) throw invalidState();
 
@@ -394,6 +406,9 @@ export class ListingsService {
         lastConfirmedAt: () => 'now()',
         ...(toReview && { submittedAt: () => 'now()' }),
       });
+      // Straight back to live: its photos become public again, or the reopen fails (P5).
+      if (status === ListingStatus.Live)
+        await this.publicPhotos.publish(manager, locked.property_id);
       await recordStatusChange(
         manager,
         id,
@@ -419,7 +434,7 @@ export class ListingsService {
     id: string,
     reason: ListerCloseReason,
   ): Promise<MyListingDto> {
-    await this.dataSource.transaction(async (manager) => {
+    const wasPublished = await this.dataSource.transaction(async (manager) => {
       const locked = await lockMine(manager, userId, id);
       if (!CLOSABLE.includes(locked.status)) throw invalidState();
       if (reason === CloseReason.RentedInApp && locked.published_at === null)
@@ -439,7 +454,9 @@ export class ListingsService {
       await recordStatusChange(manager, id, locked.status, status, userId, {
         closeReason: reason,
       });
+      return PUBLISHED.includes(locked.status) ? locked.property_id : null;
     });
+    if (wasPublished) await this.publicPhotos.unpublish(wasPublished);
     return this.getMine(userId, id);
   }
 

@@ -19,6 +19,9 @@ import {
   AdminListingDetailDto,
   AdminListingQuery,
   AdminQueuePageDto,
+  ApproveListingDto,
+  RejectListingDto,
+  TakedownListingDto,
   RevealedPhoneDto,
   RevealListerPhoneDto,
 } from './listings-admin.dto.js';
@@ -26,7 +29,7 @@ import { ListingsAdminService } from './listings-admin.service.js';
 
 const listingId = new ParseUUIDPipe({ exceptionFactory: listingNotFound });
 
-/** Staff review of listings (spec section 8). Reads: any staff role. */
+/** Staff review of listings (spec section 8). Reads: any staff role; decisions: moderator+. */
 @AdminController('listings')
 export class ListingsAdminController {
   constructor(private readonly listings: ListingsAdminService) {}
@@ -43,6 +46,56 @@ export class ListingsAdminController {
   @ApiOkResponse({ type: AdminListingDetailDto })
   detail(@Param('id', listingId) id: string): Promise<AdminListingDetailDto> {
     return this.listings.detail(id);
+  }
+
+  /**
+   * Approve (R2–R4): pending_review → live, photos published. Errors: 404 LISTING_NOT_FOUND; 409
+   * ALREADY_DECIDED, LISTING_NOT_REVIEWABLE, LISTING_CHANGED (with the current `version`),
+   * LISTER_NOT_ELIGIBLE, ACTIVE_LISTING_LIMIT; 503 STORAGE_UNAVAILABLE.
+   */
+  @Post(':id/approve')
+  @Roles(AdminRole.Moderator)
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: AdminListingDetailDto })
+  approve(
+    @CurrentAdmin() admin: AdminUser,
+    @Param('id', listingId) id: string,
+    @Body() body: ApproveListingDto,
+  ): Promise<AdminListingDetailDto> {
+    return this.listings.approve(admin.id, id, body);
+  }
+
+  /**
+   * Reject (R2, R4): pending_review → rejected. Errors: 400 LISTER_NOTE_NOT_ALLOWED (with
+   * GUIDELINES), NOTE_CONTAINS_ID_NUMBER; 404; 409 ALREADY_DECIDED, LISTING_NOT_REVIEWABLE,
+   * LISTING_CHANGED.
+   */
+  @Post(':id/reject')
+  @Roles(AdminRole.Moderator)
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: AdminListingDetailDto })
+  reject(
+    @CurrentAdmin() admin: AdminUser,
+    @Param('id', listingId) id: string,
+    @Body() body: RejectListingDto,
+  ): Promise<AdminListingDetailDto> {
+    return this.listings.reject(admin.id, id, body);
+  }
+
+  /**
+   * Take down (R5): live or stale → removed (staff_takedown); photos unpublished, CDN purged.
+   * Errors: 400 LISTER_NOTE_NOT_ALLOWED, NOTE_CONTAINS_ID_NUMBER; 404; 409 LISTING_NOT_REVIEWABLE.
+   */
+  @Post(':id/takedown')
+  @Roles(AdminRole.Moderator)
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: AdminListingDetailDto })
+  takedown(
+    @CurrentAdmin() admin: AdminUser,
+    @Param('id', listingId) id: string,
+    @Body() body: TakedownListingDto,
+  ): Promise<AdminListingDetailDto> {
+    return this.listings.takedown(admin.id, id, body);
   }
 
   /**

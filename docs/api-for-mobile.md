@@ -339,6 +339,27 @@ submitting: show a past date as "Available now".
 A rejected listing keeps `staffReasonCode` and `listerNote` (the last decision) after it's
 resubmitted; show them only while `status` is `rejected`.
 
+### Staff decisions, as the lister sees them
+
+- **Approved:** `status: "live"`, `publishedAt` set. The listing is public, and so are its photos.
+- **Rejected:** `status: "rejected"`, with `staffReasonCode` and maybe `listerNote` (staff's note
+  to the lister, at most 300 characters). Show the reason in the app's words and the note as it
+  is; the lister fixes the listing and submits again.
+- **Taken down by staff:** `status: "removed"` with `closeReason: "staff_takedown"`, a
+  `staffReasonCode` and maybe a `listerNote`. It can't be edited or reopened; the lister may
+  relist the home.
+
+Reason codes and suggested texts:
+
+| `staffReasonCode` | Show |
+| --- | --- |
+| `PHOTOS_UNCLEAR` | "The photos are too dark or unclear" |
+| `PHOTOS_DONT_MATCH` | "The photos don't match the description" |
+| `WRONG_LOCATION` | "The location looks wrong" |
+| `MISSING_INFORMATION` | "Some information is missing" |
+| `DUPLICATE_LISTING` | "This home is already listed" |
+| `GUIDELINES` | "This listing didn't meet our guidelines" (nothing more: there is never a note with it) |
+
 ### `POST /listings/:id/withdraw`
 
 No body. Takes a listing in review back to `draft` (to fix something before staff look at it).

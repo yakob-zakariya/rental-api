@@ -83,11 +83,18 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
       `UNLISTED_NEIGHBOURHOOD`, `CONTACT_IN_TEXT`, widened from phone numbers to Telegram,
       email and links); `PHOTO_MATCH` comes with T3.3. Drafts never listed. The phone only
       through `POST /admin/listings/:id/reveal-lister-phone` (moderator+, audited).
-- [ ] **T4.2 Approve, reject, take down.** R2–R6, reason codes, `version` check, `listerNote`
+- [x] **T4.2 Approve, reject, take down.** R2–R6, reason codes, `version` check, `listerNote`
       added to the audit allow-list (S1); tests. Approving publishes the listing's photos
       (`PhotoStorage.publish`); a takedown unpublishes them and purges the CDN cache for them
       (P5: cached copies otherwise live on for up to a day). Every other move out of `live`
-      unpublishes too.
+      unpublishes too. Done 2026-11-24 (R7: `PublicPhotos`, `PublicCache` do-nothing for now).
+- [ ] **T4.4 Public photo reconciliation** (added 2026-11-24). An hourly job (`@nestjs/schedule`,
+      like the verification polling job, behind `JOBS_ENABLED`): list the public bucket and remove
+      every photo whose listing isn't `live` (or whose photo row is gone), and log what it
+      removed. Covers a best-effort unpublish that failed after a takedown (the URLs were seen,
+      so they aren't unguessable) and a publish whose approval transaction then failed. Needs a
+      "list public keys" operation on `PhotoStorage`. Tests: run the job with stray public copies
+      of each kind; run it twice.
 - [ ] **T4.3 Review web page.** The static page at `/admin/review`, including "add
       neighbourhood" for an unlisted one, with `propertyId` on `POST /admin/neighbourhoods`
       moving that property to the new neighbourhood and clearing its typed name (G7); checked by
@@ -111,9 +118,12 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
       (project, Android and iOS apps, service account) (T-4). Then the FCM implementation,
       deleting invalid tokens (N2); checked on a real phone.
 - [ ] **T6.3 Freshness job.** F1–F6: checks, the answer endpoint with closing reasons, stale,
-      restore, expiry; tests with the clock moved and the job run twice.
+      restore, expiry; tests with the clock moved and the job run twice. Live → stale and stale or
+      expired → anything unpublish the photos, and restore → live publishes them, through
+      `PublicPhotos` (R7).
 - [ ] **T6.4 Review notices.** Push on approve, reject and takedown, with the reason code (N5);
-      tests.
+      tests. A takedown's push carries its reason code, the neutral `GUIDELINES` for suspected
+      fraud, and the lister note if any (never with `GUIDELINES`), never the staff note.
 - [ ] **T6.5 Clean up untouched drafts** (added 2026-11-23). Drafts nobody has edited for a long
       time hold photos in storage (from Step 3). Before this task, decide with the user: after
       how long, whether the lister is warned first (push), and whether `updated_at` is the right
@@ -125,7 +135,8 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
 - [ ] **T7.1 Ban and unban with listings.** The ban expires open listings and deletes devices;
       unban leaves listings expired (L8, N2); browse hides non-active listers; tests. The T2.4
       test "live → edit → pending_review → ban → unban → reopen" expires the listing with SQL
-      for now: drop that line once the ban does it.
+      for now: drop that line once the ban does it. The ban unpublishes the photos of the listings
+      it expires (`PublicPhotos`, R7).
 
 ## Step 8 — Flutter app (repo: `rental-app`)
 

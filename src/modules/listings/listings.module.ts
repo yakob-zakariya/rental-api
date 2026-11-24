@@ -19,6 +19,7 @@ import {
   PropertyPhotosController,
 } from './property-photos.controller.js';
 import { PropertyPhotosService } from './property-photos.service.js';
+import { PublicPhotos } from './public-photos.js';
 
 /** Properties, listings, their history and their photos (spec sections 3 and 4). */
 @Module({
@@ -52,6 +53,7 @@ import { PropertyPhotosService } from './property-photos.service.js';
     ListingsService,
     ListingsAdminService,
     PropertyPhotosService,
+    PublicPhotos,
     PhotoUploadErrorFilter,
     { provide: PhotoCounter, useClass: DbPhotoCounter },
   ],

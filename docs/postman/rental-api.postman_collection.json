@@ -1368,7 +1368,7 @@
                 "{{adminListingId}}"
               ]
             },
-            "description": "Any staff role. Everything the reviewer needs: exact location and landmark, photos as signed links (15 min), flags with details, the lister (verified name, verification and account status; **no phone**), their other listings, and the history.",
+            "description": "Any staff role. Everything the reviewer needs: exact location and landmark, photos as signed links (15 min), flags with details, the lister (verified name, verification and account status; **no phone**), their other listings, and the history. Saves `adminListingVersion` for approve and reject.",
             "auth": {
               "type": "bearer",
               "bearer": [
@@ -1387,7 +1387,177 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));"
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) pm.environment.set('adminListingVersion', pm.response.json().version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Approve listing",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/listings/{{adminListingId}}/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "listings",
+                "{{adminListingId}}",
+                "approve"
+              ]
+            },
+            "description": "Moderator+. pending_review → live; the photos become public. Send the `version` from the detail (saved by **Listing review detail**). 409: `ALREADY_DECIDED`, `LISTING_NOT_REVIEWABLE`, `LISTING_CHANGED` (the lister edited it: open the detail again), `LISTER_NOT_ELIGIBLE`, `ACTIVE_LISTING_LIMIT`. 503 `STORAGE_UNAVAILABLE`.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{adminListingVersion}},\n  \"note\": \"Photos match the description\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('a known answer', () => pm.expect([200, 409, 503]).to.include(pm.response.code));",
+                  "if (pm.response.code !== 200) console.log('approve refused:', pm.response.json());"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reject listing",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/listings/{{adminListingId}}/reject",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "listings",
+                "{{adminListingId}}",
+                "reject"
+              ]
+            },
+            "description": "Moderator+. pending_review → rejected. `reasonCode`: PHOTOS_UNCLEAR, PHOTOS_DONT_MATCH, WRONG_LOCATION, MISSING_INFORMATION, DUPLICATE_LISTING, GUIDELINES (suspected fraud: neutral, and then **no** `listerNote`, else 400 `LISTER_NOTE_NOT_ALLOWED`). `listerNote` (≤ 300) is shown to the lister; `note` (required) is staff-only.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": {{adminListingVersion}},\n  \"reasonCode\": \"PHOTOS_UNCLEAR\",\n  \"listerNote\": \"Please add brighter photos of the kitchen\",\n  \"note\": \"Photos 2 and 3 are too dark\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('a known answer', () => pm.expect([200, 400, 409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Take down listing",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/listings/{{adminListingId}}/takedown",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "listings",
+                "{{adminListingId}}",
+                "takedown"
+              ]
+            },
+            "description": "Moderator+. live or stale → removed (close reason staff_takedown); photos unpublished, the CDN purged (logged only, until production has a CDN). No version. Other states: 409 `LISTING_NOT_REVIEWABLE`. Find a live listing with **Listing review queue** and `status=live`.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reasonCode\": \"GUIDELINES\",\n  \"note\": \"Reported as a scam; photos copied\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('a known answer', () => pm.expect([200, 400, 409]).to.include(pm.response.code));"
                 ]
               }
             }
