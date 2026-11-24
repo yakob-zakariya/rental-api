@@ -490,6 +490,33 @@ few).
 now"**, and let them move the pin. Nothing is saved. The server counts refused pins by area
 (rounded to about 1 km, with no link to the user) to see where people want the service next.
 
+## Push notifications
+
+### `POST /me/devices`
+
+Body: `{ "fcmToken": "<Firebase registration token>", "platform": "android" | "ios" }`. → `201`
+`{ "id": "…" }`. **Call it after every sign-in, on every app start, and whenever Firebase gives a
+new token** (`onTokenRefresh`); the same token again just updates it. Keep the `id`.
+
+- A phone belongs to the sign-in it was registered under: **logging out, or the account being
+  signed out everywhere, stops its notices** (the server deletes it). After signing in again,
+  register again.
+- `401 ACCESS_TOKEN_EXPIRED`: refresh and retry (as everywhere). `401 UNAUTHENTICATED`: that
+  sign-in has ended; sign in again.
+
+### `DELETE /me/devices/:id`
+
+→ `204`. Call it on logout, **before** `POST /auth/logout` (the logout deletes it anyway; this
+also covers a logout that fails offline). `404 DEVICE_NOT_FOUND` if it's already gone: ignore it.
+
+### What a push contains
+
+A title and a body in the user's language (Amharic, or English; Afaan Oromo users get English for
+now), naming the listing only by property type and neighbourhood, never a phone number, a name
+or a location. The data part is `{ "type": "…", "listingId": "…" }`: open that listing (for the
+lister, their own listing screen). Types in Phase 2: `weekly_check` (open the "still available?"
+answer), `listing_approved`, `listing_rejected`, `listing_taken_down`.
+
 ## Browse (no account needed)
 
 ### `GET /listings`

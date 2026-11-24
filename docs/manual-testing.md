@@ -307,6 +307,19 @@ what was recorded.
 | Relist while the property has a draft, live, in-review, expired or rejected listing | 409 `PROPERTY_HAS_OPEN_LISTING` with that `listingId` |
 | Relist someone else's property | 404 `PROPERTY_NOT_FOUND` |
 
+## Push devices (app token)
+
+`PUSH_PROVIDER=console`: pushes are only logged in the API's terminal (`[Push] To …abc123: …`).
+
+| Try | Expect |
+| --- | --- |
+| `POST /me/devices { "fcmToken": "test-token-1", "platform": "android" }` | 201 `{ id }`; again: the same `id` |
+| Sign in on a second "phone" (another OTP for the same number), register `test-token-2` | two rows in `SELECT fcm_token, session_id FROM devices;`, with different `session_id`s |
+| `POST /auth/logout` with the first sign-in's refresh token | `test-token-1` is gone, `test-token-2` stays |
+| Ban the user (staff), or reuse an old refresh token | all their devices are gone |
+| `DELETE /me/devices/<id>` with someone else's id | 404 `DEVICE_NOT_FOUND` |
+| An 11th device | the least recently seen one is replaced |
+
 ## Browse (no token)
 
 Approve a listing first (see Listing review). Then, with no token at all:

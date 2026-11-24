@@ -336,6 +336,82 @@
               }
             }
           ]
+        },
+        {
+          "name": "Register this phone for push",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/me/devices",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "me",
+                "devices"
+              ]
+            },
+            "description": "Registers an FCM token under the current sign-in session (any string works with PUSH_PROVIDER=console). 201 `{ id }`, saved as `deviceId`. The same token again: the same id. Logging out deletes it.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fcmToken\": \"postman-test-token\",\n  \"platform\": \"android\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "pm.environment.set('deviceId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Remove this phone",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/me/devices/{{deviceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "me",
+                "devices",
+                "{{deviceId}}"
+              ]
+            },
+            "description": "204. The app calls it on logout. Already gone: 404 `DEVICE_NOT_FOUND`."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('a known answer', () => pm.expect([204, 404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },

@@ -123,9 +123,12 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
 
 ## Step 6 — Push and freshness
 
-- [ ] **T6.1 Push foundation.** `PushSender`, the console sender, `POST /me/devices`,
+- [x] **T6.1 Push foundation.** `PushSender`, the console sender, `POST /me/devices`,
       `DELETE /me/devices/:id`, the text file in English and Amharic (Claude drafts the Amharic;
-      you review it) (N1–N4); tests.
+      you review it) (N1–N4); tests. Done 2026-11-24: devices belong to the sign-in session they
+      were registered under (refresh_tokens.session_id, `sid` in access tokens) and are deleted
+      when it ends (logout, revoke-all, ban; expired sessions skipped when sending); 10 per user.
+      The Amharic drafts await the user's review.
 - [ ] **T6.2 FCM sender.** Before this task, Claude gives you the exact Firebase setup steps
       (project, Android and iOS apps, service account) (T-4). Then the FCM implementation,
       deleting invalid tokens (N2); checked on a real phone.
@@ -145,7 +148,8 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
 ## Step 7 — Bans
 
 - [ ] **T7.1 Ban and unban with listings.** The ban expires open listings and deletes devices;
-      unban leaves listings expired (L8, N2); browse hides non-active listers; tests. The T2.4
+      unban leaves listings expired (L8, N2); browse hides non-active listers; tests. (The ban
+      already deletes the user's devices since T6.1, through `revokeAllForUser`.) The T2.4
       test "live → edit → pending_review → ban → unban → reopen" expires the listing with SQL
       for now: drop that line once the ban does it. The ban unpublishes the photos of the listings
       it expires (`PublicPhotos`, R7). **A revoked verification does the same** (decided

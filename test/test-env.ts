@@ -57,4 +57,5 @@ export const TEST_ENV = {
   PHOTO_MAX_INPUT_PIXELS: '50000000',
 
   SEARCH_MAX_RADIUS_KM: '20',
+  PUSH_PROVIDER: 'console',
 } as const satisfies Record<string, string>;

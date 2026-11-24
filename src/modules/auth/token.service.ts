@@ -8,6 +8,10 @@ import { JwtService } from '@nestjs/jwt';
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { DataSource, EntityManager } from 'typeorm';
 import { durationToSeconds } from '../../common/duration.js';
+import {
+  deleteSessionDevices,
+  deleteUserDevices,
+} from '../push/session-devices.js';
 import type { EnvironmentVariables } from '../../config/env.validation.js';
 import { User } from '../users/user.entity.js';
 import { UserStatus } from '../users/user.enums.js';
@@ -32,6 +36,7 @@ interface RefreshClaims {
 interface RefreshRow {
   id: string;
   user_id: string;
+  session_id: string;
   token_hash: string;
   device_name: string | null;
   replaced_by_id: string | null;
@@ -83,8 +88,9 @@ export class TokenService {
 
   /** Issues a new pair after sign-in. The caller checks account status (rule A6) first. */
   issue(user: User, deviceName: string | null = null): Promise<TokenPair> {
+    // A new sign-in starts a new session.
     return this.dataSource.transaction((manager) =>
-      this.createPair(manager, user.id, deviceName),
+      this.createPair(manager, user.id, deviceName, null),
     );
   }
 
@@ -106,7 +112,10 @@ export class TokenService {
     return outcome.pair;
   }
 
-  /** Logout. Always succeeds: an unknown, invalid or already-revoked token is a no-op. */
+  /**
+   * Logout. Always succeeds: an unknown, invalid or already-revoked token is a no-op. Ends the
+   * session: its push devices are deleted in the same transaction (T6.1).
+   */
   async revoke(refreshToken: string): Promise<void> {
     const claims = await this.verifyRefreshJwt(refreshToken, {
       ignoreExpiration: true,
@@ -125,6 +134,7 @@ export class TokenService {
         `UPDATE refresh_tokens SET revoked_at = clock_timestamp() WHERE id = $1`,
         [row.id],
       );
+      await deleteSessionDevices(manager, row.session_id);
     });
   }
 
@@ -134,11 +144,12 @@ export class TokenService {
    */
   async verifyAccessToken(
     token: string,
-  ): Promise<{ userId: string } | 'expired' | null> {
+  ): Promise<{ userId: string; sessionId: string | null } | 'expired' | null> {
     try {
       const claims = await this.jwt.verifyAsync<{
         sub?: unknown;
         typ?: unknown;
+        sid?: unknown;
       }>(token, {
         secret: this.accessSecret,
         algorithms: ['HS256'],
@@ -147,22 +158,35 @@ export class TokenService {
       });
       if (claims.typ !== 'access' || typeof claims.sub !== 'string')
         return null;
-      return { userId: claims.sub };
+      // `sid` since T6.1; tokens issued before it (15 minutes at most) have none.
+      return {
+        userId: claims.sub,
+        sessionId: typeof claims.sid === 'string' ? claims.sid : null,
+      };
     } catch (error) {
       return (error as Error).name === 'TokenExpiredError' ? 'expired' : null;
     }
   }
 
-  /** Rule A5, and bans (T3): revokes every live refresh token of a user. */
+  /**
+   * Rule A5, and bans (T3): revokes every live refresh token of a user, and deletes all their push
+   * devices in the same transaction (T6.1), so no phone keeps receiving their notices. Also the
+   * path for the lost-SIM move (Phase 5).
+   */
   async revokeAllForUser(
     userId: string,
     manager?: EntityManager,
   ): Promise<void> {
-    await (manager ?? this.dataSource.manager).query(
-      `UPDATE refresh_tokens SET revoked_at = clock_timestamp()
-       WHERE user_id = $1 AND revoked_at IS NULL`,
-      [userId],
-    );
+    const run = async (m: EntityManager) => {
+      await m.query(
+        `UPDATE refresh_tokens SET revoked_at = clock_timestamp()
+         WHERE user_id = $1 AND revoked_at IS NULL`,
+        [userId],
+      );
+      await deleteUserDevices(m, userId);
+    };
+    if (manager) await run(manager);
+    else await this.dataSource.transaction(run);
   }
 
   private async rotateLocked(
@@ -200,6 +224,7 @@ export class TokenService {
       manager,
       row.user_id,
       row.device_name,
+      row.session_id,
       (newId) =>
         manager.query(
           `UPDATE refresh_tokens SET revoked_at = clock_timestamp(), replaced_by_id = $2
@@ -232,6 +257,7 @@ export class TokenService {
       manager,
       row.user_id,
       row.device_name,
+      row.session_id,
       async (newId) => {
         await manager.query(
           `UPDATE refresh_tokens SET revoked_at = clock_timestamp(), replaced_by_id = $2
@@ -248,16 +274,22 @@ export class TokenService {
     return { kind: 'ok', pair };
   }
 
+  /**
+   * `sessionId`: the session a rotation continues, or null for a new sign-in (the new token's id
+   * becomes the session's id). Access tokens carry it as `sid`.
+   */
   private async createPair(
     manager: EntityManager,
     userId: string,
     deviceName: string | null,
+    sessionId: string | null,
     beforeReturn?: (newId: string) => Promise<unknown>,
   ): Promise<TokenPair> {
     const id = randomUUID();
+    const session = sessionId ?? id;
     const [accessToken, refreshToken] = await Promise.all([
       this.jwt.signAsync(
-        { sub: userId, typ: 'access' },
+        { sub: userId, typ: 'access', sid: session },
         {
           secret: this.accessSecret,
           expiresIn: this.accessTtlSeconds,
@@ -280,9 +312,16 @@ export class TokenService {
     ]);
 
     await manager.query(
-      `INSERT INTO refresh_tokens (id, user_id, token_hash, device_name, expires_at, created_at)
-       VALUES ($1, $2, $3, $4, clock_timestamp() + make_interval(secs => $5), clock_timestamp())`,
-      [id, userId, sha256(refreshToken), deviceName, this.refreshTtlSeconds],
+      `INSERT INTO refresh_tokens (id, user_id, session_id, token_hash, device_name, expires_at, created_at)
+       VALUES ($1, $2, $3, $4, $5, clock_timestamp() + make_interval(secs => $6), clock_timestamp())`,
+      [
+        id,
+        userId,
+        session,
+        sha256(refreshToken),
+        deviceName,
+        this.refreshTtlSeconds,
+      ],
     );
     await beforeReturn?.(id);
 
@@ -299,7 +338,7 @@ export class TokenService {
   ): Promise<RefreshRow | undefined> {
     return manager
       .query<RefreshRow[]>(
-        `SELECT id, user_id, token_hash, device_name, replaced_by_id,
+        `SELECT id, user_id, session_id, token_hash, device_name, replaced_by_id,
                 revoked_at IS NOT NULL AS revoked,
                 expires_at <= clock_timestamp() AS expired,
                 coalesce(revoked_at > clock_timestamp() - make_interval(secs => $2), false)

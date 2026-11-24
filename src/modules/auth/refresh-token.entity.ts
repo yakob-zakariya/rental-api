@@ -12,6 +12,8 @@ import { User } from '../users/user.entity.js';
 @Entity('refresh_tokens')
 // Rule A5 and bans revoke every token of a user.
 @Index('IDX_refresh_tokens_user_id', ['userId'])
+// Push devices end with their session (T6.1); finding a session's live token must be quick.
+@Index('IDX_refresh_tokens_session_id', ['sessionId'])
 export class RefreshToken {
   // Set by TokenService before signing: it is the refresh JWT's `jti`.
   @PrimaryGeneratedColumn('uuid')
@@ -19,6 +21,14 @@ export class RefreshToken {
 
   @Column({ name: 'user_id', type: 'uuid' })
   userId: string;
+
+  /**
+   * The sign-in session this token belongs to (T6.1): the id of the session's first token, copied
+   * to every token rotated from it, so a session keeps one identity through rotation. Access
+   * tokens carry it as `sid`; push devices are registered under it and end with it.
+   */
+  @Column({ name: 'session_id', type: 'uuid' })
+  sessionId: string;
 
   @ManyToOne(() => User)
   @JoinColumn({

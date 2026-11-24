@@ -50,6 +50,7 @@ export class JwtAuthGuard implements CanActivate {
     if (!result) throw unauthenticated();
 
     request.authUserId = result.userId;
+    request.authSessionId = result.sessionId ?? undefined;
     return true;
   }
 
@@ -60,7 +61,10 @@ export class JwtAuthGuard implements CanActivate {
     ).split(' ');
     if (scheme !== 'Bearer' || !token || rest.length > 0) return;
     const result = await this.tokens.verifyAccessToken(token);
-    if (result && result !== 'expired') request.authUserId = result.userId;
+    if (result && result !== 'expired') {
+      request.authUserId = result.userId;
+      request.authSessionId = result.sessionId ?? undefined;
+    }
   }
 }
 

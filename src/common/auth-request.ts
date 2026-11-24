@@ -5,6 +5,8 @@ import type { User } from '../modules/users/user.entity.js';
 export interface AuthRequest extends Request {
   /** Set by JwtAuthGuard from the access token's `sub`. */
   authUserId?: string;
+  /** Set by JwtAuthGuard from the access token's `sid`: the sign-in session (T6.1). */
+  authSessionId?: string;
   /** Set by ActiveAccountGuard, loaded fresh from the database. */
   currentUser?: User;
 }

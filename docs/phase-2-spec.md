@@ -185,11 +185,21 @@ Rows are never changed (a trigger refuses UPDATE); deleting a draft deletes its 
 | --- | --- | --- |
 | id | uuid PK | |
 | user_id | uuid FK → users | |
-| fcm_token | varchar unique | |
+| session_id | uuid | the sign-in session it was registered under (T6.1) |
+| fcm_token | varchar(4096) unique | |
 | platform | enum `android`, `ios` | |
 | created_at, last_seen_at | timestamptz | |
 
+**A device ends with its sign-in session** (decided 2026-11-24): logout deletes that session's
+devices; revoking all of a user's sessions (a reused refresh token, A5; a ban; later the lost-SIM
+move) deletes all their devices, in the same transaction. A session that simply expires sends no
+more pushes (`PushService` sends only to devices of live sessions and deletes the rest). At most
+10 devices per user: an 11th replaces the least recently seen.
+
 ### Changes to Phase 1 tables and code
+- `refresh_tokens.session_id` (T6.1): the id of a sign-in session's first token, copied to every
+  token rotated from it, so a session keeps one id through rotation (existing rows filled in by
+  walking the rotation chains). Access tokens carry it as `sid`.
 - `admin_actions`: new action types `listing.approve`, `listing.reject`, `listing.takedown`,
   `listing.reveal_lister_phone` (T4.1), `neighbourhood.create`, `neighbourhood.update`, `neighbourhood.deactivate`,
   `neighbourhood.reactivate`; new target types `listing`, `neighbourhood`. The `details`
@@ -481,9 +491,12 @@ Any other transition: 409 `INVALID_LISTING_STATE`. **Active** means `pending_rev
 - **N1** `PushSender` interface, chosen by `PUSH_PROVIDER`: `console` logs messages (development
   and tests), `fcm` sends through Firebase Cloud Messaging (HTTP v1 via `firebase-admin`; read
   the FCM docs before writing it). The app refuses to start in production with `console`.
-- **N2** `POST /me/devices { fcmToken, platform }` registers a token (an existing token moves to
-  the current user, for a shared phone); `DELETE /me/devices/:id` removes one (the app calls it
-  on logout). Tokens FCM reports as invalid are deleted. A ban deletes the user's devices.
+- **N2** `POST /me/devices { fcmToken, platform }` registers a token under the current sign-in
+  session (an existing token moves to the current user and session, for a shared phone);
+  `DELETE /me/devices/:id` removes one (the app calls it on logout; 404 `DEVICE_NOT_FOUND`).
+  Tokens FCM reports as invalid are deleted. Devices end with their session (section 2), which
+  covers logout, revoke-all and the ban. An access token from before sessions had ids gets 401
+  `ACCESS_TOKEN_EXPIRED` (refresh and retry); an ended session, 401 `UNAUTHENTICATED`.
 - **N3** Texts are in the user's `preferred_language`: English or Amharic; `om` users get English
   until Afaan Oromo is added. All texts live in one file (as `otp-message.ts`). Claude drafts the
   Amharic, you review it.
@@ -576,7 +589,7 @@ later.
 ## 9. Environment variables (new)
 
 ```
-PUSH_PROVIDER=console              # console | fcm
+PUSH_PROVIDER=console              # console | fcm (fcm: T6.2); production refuses console
 FCM_SERVICE_ACCOUNT_FILE=          # path to the Firebase service-account JSON; never committed
 S3_ENDPOINT=http://localhost:8333  # SeaweedFS in development
 S3_REGION=auto
@@ -662,6 +675,9 @@ the local SeaweedFS (its own test buckets) or a fake `PhotoStorage`; tests never
 - **Service area (2026-11-10):** strict, no margin outside the OpenStreetMap boundary. A refused
   pin gets a friendly message in the app and is recorded rounded to about 1 km, with no user
   link. → G1
+- **Push devices (2026-11-24):** at most 10 per user; each device belongs to the sign-in session
+  it was registered under and is deleted when that session ends; Amharic texts in the polite form
+  (እርስዎ). → N2, N3
 - **Detail and names (2026-11-24):** the optional sign-in on public routes, for the lister's
   preview (and Phase 3); public views require an active **and** verified lister, and a revoked
   verification expires the lister's open listings like a ban (T7.1); passport name order is

@@ -24,6 +24,11 @@ export enum SmsProvider {
   Console = 'console',
 }
 
+/** Who sends push notifications (spec N1). `fcm` (Firebase Cloud Messaging) comes with T6.2. */
+export enum PushProvider {
+  Console = 'console',
+}
+
 /** Which Didit environment's webhook events we accept (spec §4 flow step 3). */
 export enum DiditEnvironment {
   Sandbox = 'sandbox',
@@ -313,6 +318,10 @@ export class EnvironmentVariables {
   @Min(1, { message: '$property must be at least 1' })
   @IsInt({ message: '$property must be an integer' })
   SEARCH_MAX_RADIUS_KM: number = 20;
+
+  // --- Push (spec N1; T6.1) ---
+  @IsEnum(PushProvider, { message: '$property must be one of console' })
+  PUSH_PROVIDER: PushProvider = PushProvider.Console;
 }
 
 // Variables whose .env.example value is a placeholder that production must replace.
@@ -383,6 +392,12 @@ export function validateEnv(
     if (env.SMS_PROVIDER === SmsProvider.Console) {
       problems.push(
         "SMS_PROVIDER=console logs OTP codes and can't be used in production",
+      );
+    }
+    // The console sender only logs: nobody would receive a weekly check or a decision.
+    if (env.PUSH_PROVIDER === PushProvider.Console) {
+      problems.push(
+        "PUSH_PROVIDER=console sends nothing and can't be used in production",
       );
     }
   }

@@ -60,6 +60,7 @@ src/
     admin/           # staff auth, roles, manual review, bans, audit log
     areas/           # Addis Ababa sub-cities and neighbourhoods (seeded), GET /areas, staff management
     photos/          # PhotoStorage (S3-compatible: private + public bucket), upload pipeline
+    push/            # PushSender (console; FCM in T6.2), devices tied to sign-in sessions, push texts (EN/AM)
     listings/        # properties, listings, listing history (the listing state machine, spec L9)
 test/               # e2e specs; global-setup.ts recreates + migrates rental_test each run
 docs/

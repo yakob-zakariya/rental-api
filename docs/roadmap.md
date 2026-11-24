@@ -97,7 +97,10 @@ Details are in `product-overview.md`.
 - **Q9** Swagger plus a very small listing-review web page with photos.
 - **Q10** English and Amharic.
 - **Q11** Lost SIM: re-verifying with the same ID on a new number logs out every session on the
-  old number and frees it.
+  old number and frees it. **When building it (Phase 5):** end the old number's sessions through
+  `TokenService.revokeAllForUser`, in the same transaction as the move: it also deletes every push
+  device of those sessions (T6.1, decided 2026-11-24), so a stolen phone stops receiving the
+  lister's notices. Add a test that the old number's devices are gone.
 - Chat is needed at launch and starts from an accepted contact request.
 
 ## Open questions

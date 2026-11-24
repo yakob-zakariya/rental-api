@@ -20,6 +20,7 @@ import { HealthModule } from './modules/health/health.module.js';
 import { ListingsModule } from './modules/listings/listings.module.js';
 import { ModerationModule } from './modules/moderation/moderation.module.js';
 import { PhotosModule } from './modules/photos/photos.module.js';
+import { PushModule } from './modules/push/push.module.js';
 import { SmsModule } from './modules/sms/sms.module.js';
 import { UsersModule } from './modules/users/users.module.js';
 import { VerificationModule } from './modules/verification/verification.module.js';
@@ -65,6 +66,7 @@ import { RedisModule } from './redis/redis.module.js';
     AreasModule,
     ListingsModule,
     PhotosModule,
+    PushModule,
   ],
   providers: [
     { provide: APP_PIPE, useFactory: createValidationPipe },
