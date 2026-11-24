@@ -204,14 +204,31 @@ half-filled; `missing` in every answer lists what still has to be filled in befo
 | `DELETE /listings/<id>` | 204; gone from `GET /me/listings`, its property too |
 | PATCH or DELETE a listing that isn't a draft (in psql: `UPDATE listings SET status = 'pending_review', …`) | 409 `INVALID_LISTING_STATE` |
 
-**Submit and withdraw.** Until photos exist (Step 3) the API counts 0 photos for every listing, so
-a submit by hand always stops at the photo check; the automated tests cover a successful submit.
+**Photos (P1, P2, P4).** In Postman: **Create a full draft** (saves `listingPropertyId`), then
+**Upload a photo** (pick the file in the Body tab). Try a photo from your phone with location on:
+
+| Try | Expect |
+| --- | --- |
+| Upload a phone photo (JPEG) | 201; `property.photos` has it with a signed `url` (works for 15 minutes) and its stored size (at most 2048 px) |
+| Open the `url`, save the file, and check it with `exiftool <file>` (or any EXIF viewer) | no GPS, no camera make or model, no date: only the image size and type |
+| A portrait photo | stored upright |
+| A GIF, a PDF, or a text file renamed to `.jpg` | 400 `PHOTO_TYPE_NOT_ALLOWED` |
+| A file over 10 MB | 413 `PHOTO_TOO_LARGE` with `max` |
+| A 13th photo | 409 `TOO_MANY_PHOTOS` |
+| **Delete a photo** in a draft | 200; the later photos move up |
+| **Reorder photos** with every id, reversed | 200, new order; the same order again: `version` unchanged |
+| Reorder with one id missing | 400 `PHOTO_ORDER_MISMATCH` |
+| With the listing live (psql: `UPDATE listings SET status = 'live', published_at = now() WHERE id = '<id>';`) upload or delete a photo | `status: pending_review` (back to review); reordering keeps it `live` |
+| In review, live or stale with exactly 3 photos: delete one | 409 `NOT_ENOUGH_PHOTOS` |
+
+**Submit and withdraw.** A submit needs 3 photos; upload them first.
 
 | Try | Expect |
 | --- | --- |
 | `POST /listings/<id>/submit` as a user who isn't verified | 403 `VERIFICATION_REQUIRED` (checked first) |
 | … verified (in psql: `UPDATE users SET verification_status = 'approved' WHERE phone = '+2519…';`), on an empty draft | 400 `LISTING_INCOMPLETE` with `missing` (the same list the draft shows) |
-| … on a complete draft | 400 `NOT_ENOUGH_PHOTOS`, `min: 3` (until Step 3) |
+| … on a complete draft with fewer than 3 photos | 400 `NOT_ENOUGH_PHOTOS`, `min: 3` |
+| … with 3 photos | 200, `status: pending_review` |
 | `POST /listings/<id>/withdraw` on a draft | 409 `INVALID_LISTING_STATE` (only a listing in review can be withdrawn) |
 | To try withdraw: in psql `UPDATE listings SET status = 'pending_review' WHERE id = '<id>';`, then withdraw | 200, `status: draft`; `SELECT * FROM listing_history WHERE listing_id = '<id>';` shows the change |
 | Submit or withdraw someone else's listing | 404 `LISTING_NOT_FOUND` |
@@ -232,8 +249,8 @@ what was recorded.
 | Live or in review: `PATCH { "description": null }` | 400 `LISTING_INCOMPLETE`, `missing: ["description"]` |
 | Rented or removed: any PATCH | 409 `INVALID_LISTING_STATE` |
 | Expired: `PATCH { "bedrooms": 4 }` | 200, stays `expired`, `needsReview: true` |
-| Expired, nothing that needs review changed: `POST /listings/<id>/reopen` (verified user) | until Step 3: 400 `NOT_ENOUGH_PHOTOS`; after: 200 `live`, `last_confirmed_at` set, `published_at` unchanged |
-| Expired with `needsReview`, or never approved (`published_at` empty): reopen | (after Step 3) 200 `pending_review` |
+| Expired, nothing that needs review changed: `POST /listings/<id>/reopen` (verified user) | 200 `live` (with 3 photos), `last_confirmed_at` set, `published_at` unchanged |
+| Expired with `needsReview`, or never approved (`published_at` empty): reopen | 200 `pending_review` |
 | In psql: `UPDATE listings SET status = 'pending_review' WHERE id = '<id>';` then `… SET status = 'expired' …` | `needs_review` becomes true by itself (database trigger) |
 | Reopen a listing that isn't expired | 409 `INVALID_LISTING_STATE` |
 

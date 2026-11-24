@@ -3,32 +3,44 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
-  NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import {
-  DataSource,
-  EntityManager,
-  type Point,
-  QueryFailedError,
-} from 'typeorm';
+import { DataSource, EntityManager, In, type Point } from 'typeorm';
 import { ADDIS_ABABA_TIME_ZONE, todayIn } from '../../common/dates.js';
 import type { EnvironmentVariables } from '../../config/env.validation.js';
 import { ServiceAreaService } from '../areas/service-area.service.js';
+import { PhotoStorage } from '../photos/photo-storage.js';
+import { PropertyPhoto } from '../photos/property-photo.entity.js';
 import { VerificationStatus } from '../users/user.enums.js';
 import { randomOffset } from './approx-location.js';
 import type {
   LatLngDto,
   ListingFieldsDto,
   MyListingDto,
+  PhotoDto,
 } from './dto/listing.dto.js';
 import { assertWithinLimits } from './listing-limits.js';
 import { missingFields } from './listing-completeness.js';
-import { ListingHistory } from './listing-history.entity.js';
+import {
+  applyChangeEffects,
+  CLOSABLE,
+  CLOSED,
+  invalidState,
+  listingNotFound,
+  type LockedListing,
+  lockMine,
+  lockUser,
+  propertyNotFound,
+  RECORDED,
+  recordStatusChange,
+  recordValueChange,
+  SUBMITTABLE,
+  violates,
+} from './listing-state.js';
 import { Listing } from './listing.entity.js';
 import {
   ACTIVE_LISTING_STATUSES,
-  ActorType,
   Amenity,
   CloseReason,
   type ListerCloseReason,
@@ -38,13 +50,6 @@ import {
 } from './listings.enums.js';
 import { MIN_PHOTOS_TO_SUBMIT, PhotoCounter } from './photo-counter.js';
 import { Property } from './property.entity.js';
-
-export const listingNotFound = () =>
-  new NotFoundException({ code: 'LISTING_NOT_FOUND' });
-export const propertyNotFound = () =>
-  new NotFoundException({ code: 'PROPERTY_NOT_FOUND' });
-const invalidState = () =>
-  new ConflictException({ code: 'INVALID_LISTING_STATE' });
 
 /** Body fields stored on the property (the location is handled on its own) and on the listing. */
 const PROPERTY_FIELDS = [
@@ -75,50 +80,9 @@ const SAME_POINT_DEGREES = 1e-8;
 
 const AMENITY_ORDER = Object.values(Amenity);
 
-interface LockedListing {
-  id: string;
-  status: ListingStatus;
-  property_id: string;
-  needs_review: boolean;
-  published_at: Date | null;
-}
-
-/** Where a lister may submit from (L9). */
-const SUBMITTABLE: readonly ListingStatus[] = [
-  ListingStatus.Draft,
-  ListingStatus.Rejected,
-];
-
-/** Where a lister may close from (L9, L12); a draft is deleted instead. */
-const CLOSABLE: readonly ListingStatus[] = [
-  ListingStatus.PendingReview,
-  ListingStatus.Live,
-  ListingStatus.Stale,
-  ListingStatus.Expired,
-  ListingStatus.Rejected,
-];
-
-/** No edits: relist instead (L5, L11). */
-const CLOSED: readonly ListingStatus[] = [
-  ListingStatus.Rented,
-  ListingStatus.Removed,
-];
-
-/** Live to the public: an edit that needs review sends these back to pending_review (L5). */
-const PUBLISHED: readonly ListingStatus[] = [
-  ListingStatus.Live,
-  ListingStatus.Stale,
-];
-
-/** Whose rent and available-from changes go into listing_history (L5, L6). */
-const RECORDED: readonly ListingStatus[] = [
-  ...PUBLISHED,
-  ListingStatus.Expired,
-];
-
 /**
  * The fields a live listing changes without going back to review (L5). Every other field,
- * including the location and (from T3.2) the photos, needs review.
+ * including the location and the photos (reordering aside), needs review.
  */
 const APPLY_AT_ONCE = [
   'monthlyRentBirr',
@@ -129,10 +93,12 @@ type ApplyAtOnceField = (typeof APPLY_AT_ONCE)[number];
 
 /**
  * The lister's side of listings (spec section 3): drafts (T2.2), submit and withdraw (T2.3),
- * editing in every state and reopening (T2.4). Closing and relisting come in T2.5.
+ * editing in every state and reopening (T2.4), closing and relisting (T2.5). Photos are in
+ * PropertyPhotosService (T3.2).
  */
 @Injectable()
 export class ListingsService {
+  private readonly logger = new Logger(ListingsService.name);
   private readonly maxDrafts: number;
   private readonly maxActive: number;
 
@@ -140,6 +106,7 @@ export class ListingsService {
     private readonly dataSource: DataSource,
     private readonly serviceArea: ServiceAreaService,
     private readonly photos: PhotoCounter,
+    private readonly storage: PhotoStorage,
     config: ConfigService<EnvironmentVariables, true>,
   ) {
     this.maxDrafts = config.get('MAX_DRAFT_LISTINGS', { infer: true });
@@ -149,7 +116,7 @@ export class ListingsService {
   /** Every listing of the user, in any state, newest first. */
   async listMine(userId: string): Promise<MyListingDto[]> {
     const listings = await this.mine(this.dataSource.manager, userId).getMany();
-    return listings.map(toMyListing);
+    return this.withPhotos(listings);
   }
 
   /**
@@ -272,21 +239,14 @@ export class ListingsService {
         Object.keys(listingChanges).some(
           (field) => !APPLY_AT_ONCE.includes(field as ApplyAtOnceField),
         );
-      const backToReview = needsReview && PUBLISHED.includes(locked.status);
 
       if (Object.keys(propertyChanges).length > 0)
         await manager.update(Property, property.id, propertyChanges);
       if (locationChanged)
         await setLocation(manager, property.id, body.location ?? null);
-      await manager.update(Listing, id, {
-        ...listingChanges,
-        version: () => 'version + 1',
-        ...(backToReview && {
-          status: ListingStatus.PendingReview,
-          submittedAt: () => 'now()',
-        }),
-        ...(needsReview &&
-          locked.status === ListingStatus.Expired && { needsReview: true }),
+      await applyChangeEffects(manager, locked, userId, {
+        needsReview,
+        fields: listingChanges as Partial<Listing>,
       });
 
       // History: what the public saw change (overview §6).
@@ -304,25 +264,18 @@ export class ListingsService {
             newAvailableFrom: listingChanges.availableFrom,
           });
       }
-      if (backToReview)
-        await recordStatusChange(
-          manager,
-          id,
-          locked.status,
-          ListingStatus.PendingReview,
-          userId,
-        );
     });
     return this.getMine(userId, id);
   }
 
   /**
    * Deletes a draft with its history; a draft was never reviewed, so nothing is kept. The
-   * property goes too unless older listings of it remain (a relist draft, L11).
+   * property goes too, with its photos (rows and files), unless older listings of it remain (a
+   * relist draft, L11: the photos stay with the property).
    * Errors: 404 LISTING_NOT_FOUND (L3), 409 INVALID_LISTING_STATE.
    */
   async remove(userId: string, id: string): Promise<void> {
-    await this.dataSource.transaction(async (manager) => {
+    const deletedKeys = await this.dataSource.transaction(async (manager) => {
       const locked = await lockMine(manager, userId, id);
       if (locked.status !== ListingStatus.Draft) throw invalidState();
 
@@ -331,8 +284,33 @@ export class ListingsService {
         `SELECT EXISTS (SELECT 1 FROM listings WHERE property_id = $1) AS others`,
         [locked.property_id],
       );
-      if (!others) await manager.delete(Property, locked.property_id);
+      if (others) return [];
+      const photos = await manager.findBy(PropertyPhoto, {
+        propertyId: locked.property_id,
+      });
+      await manager.delete(PropertyPhoto, { propertyId: locked.property_id });
+      await manager.delete(Property, locked.property_id);
+      return photos.map((photo) => photo.storageKey);
     });
+    // After the commit: if the transaction had failed, the files would still be needed.
+    await this.deleteFiles(deletedKeys);
+  }
+
+  /**
+   * Deletes photo files from storage, after the rows are gone. Best effort: a failure leaves an
+   * orphaned file (logged), never a photo row pointing at nothing.
+   */
+  async deleteFiles(keys: readonly string[]): Promise<void> {
+    for (const key of keys) {
+      try {
+        await this.storage.deletePrivate(key);
+        await this.storage.unpublish(key);
+      } catch (error) {
+        this.logger.warn(
+          `Could not delete photo file ${key}: ${(error as Error).message}`,
+        );
+      }
+    }
   }
 
   /**
@@ -593,12 +571,41 @@ export class ListingsService {
       });
   }
 
-  private async getMine(userId: string, id: string): Promise<MyListingDto> {
+  /** One of the user's own listings, as they see it (404 if it isn't theirs). */
+  async getMine(userId: string, id: string): Promise<MyListingDto> {
     const listing = await this.mine(this.dataSource.manager, userId)
       .andWhere('l.id = :id', { id })
       .getOne();
     if (!listing) throw listingNotFound();
-    return toMyListing(listing);
+    const [view] = await this.withPhotos([listing]);
+    return view;
+  }
+
+  /** The lister's view, with each property's photos in order, as short-lived signed links (P5). */
+  private async withPhotos(listings: Listing[]): Promise<MyListingDto[]> {
+    const propertyIds = [...new Set(listings.map((l) => l.propertyId))];
+    const photos =
+      propertyIds.length === 0
+        ? []
+        : await this.dataSource.manager.find(PropertyPhoto, {
+            where: { propertyId: In(propertyIds) },
+            order: { position: 'ASC' },
+          });
+    const views = new Map<string, PhotoDto[]>();
+    for (const photo of photos) {
+      const list = views.get(photo.propertyId) ?? [];
+      list.push({
+        id: photo.id,
+        position: photo.position,
+        width: photo.width,
+        height: photo.height,
+        url: await this.storage.signedUrl(photo.storageKey),
+      });
+      views.set(photo.propertyId, list);
+    }
+    return listings.map((listing) =>
+      toMyListing(listing, views.get(listing.propertyId) ?? []),
+    );
   }
 
   /** The user's own listings with their property, including its private fields (G3). */
@@ -617,92 +624,6 @@ export class ListingsService {
   private requireInside(location: LatLngDto): Promise<void> {
     return this.serviceArea.requireInside(location.lat, location.lng);
   }
-}
-
-/**
- * Locks the user's row for the rest of the transaction, so the user's draft and active counts
- * can't change underneath a create or a submit (two at once would otherwise both fit under a
- * limit). Returns their verification status as it is now, for L2.
- */
-async function lockUser(
-  manager: EntityManager,
-  userId: string,
-): Promise<VerificationStatus> {
-  const [row] = await manager.query<
-    { verification_status: VerificationStatus }[]
-  >(`SELECT verification_status FROM users WHERE id = $1 FOR UPDATE`, [userId]);
-  return row.verification_status;
-}
-
-/** A status row in listing_history, in the caller's transaction (overview §6). */
-async function recordStatusChange(
-  manager: EntityManager,
-  listingId: string,
-  oldStatus: ListingStatus | null,
-  newStatus: ListingStatus,
-  userId: string,
-  reason: Pick<Partial<ListingHistory>, 'closeReason'> = {},
-): Promise<void> {
-  await manager.insert(ListingHistory, {
-    listingId,
-    event: ListingHistoryEvent.Status,
-    oldStatus,
-    newStatus,
-    ...reason,
-    actorType: ActorType.User,
-    actorId: userId,
-  });
-}
-
-/** A unique or check violation of the named constraint (Postgres reports it by name). */
-function violates(error: unknown, constraint: string): boolean {
-  return (
-    error instanceof QueryFailedError &&
-    (error.driverError as { constraint?: string }).constraint === constraint
-  );
-}
-
-/** A rent or available-from row in listing_history, in the caller's transaction (L5). */
-async function recordValueChange(
-  manager: EntityManager,
-  listingId: string,
-  userId: string,
-  change: Pick<
-    Partial<ListingHistory>,
-    | 'event'
-    | 'oldMonthlyRentBirr'
-    | 'newMonthlyRentBirr'
-    | 'oldAvailableFrom'
-    | 'newAvailableFrom'
-  >,
-): Promise<void> {
-  await manager.insert(ListingHistory, {
-    listingId,
-    ...change,
-    actorType: ActorType.User,
-    actorId: userId,
-  });
-}
-
-/**
- * Locks the listing and its property for the rest of the transaction, so two edits at once can't
- * overwrite each other or skip a version. Someone else's listing is 404, the same as a missing one
- * (L3): the ownership check is part of the query, so another user's row is never even loaded.
- */
-async function lockMine(
-  manager: EntityManager,
-  userId: string,
-  id: string,
-): Promise<LockedListing> {
-  const [row] = await manager.query<LockedListing[]>(
-    `SELECT l.id, l.status, l.property_id, l.needs_review, l.published_at
-     FROM listings l JOIN properties p ON p.id = l.property_id
-     WHERE l.id = $1 AND p.lister_id = $2
-     FOR UPDATE OF l, p`,
-    [id, userId],
-  );
-  if (!row) throw listingNotFound();
-  return row;
 }
 
 /** A neighbourhood that may be newly picked: it exists and staff haven't deactivated it (G8). */
@@ -798,7 +719,7 @@ const toPoint = (location: LatLngDto | null): Point | null =>
 const toLatLng = (point: Point | null) =>
   point ? { lat: point.coordinates[1], lng: point.coordinates[0] } : null;
 
-function toMyListing(listing: Listing): MyListingDto {
+function toMyListing(listing: Listing, photos: PhotoDto[]): MyListingDto {
   const property = listing.property!;
   const neighbourhood = property.neighbourhood ?? null;
   const subCity = neighbourhood?.subCity ?? null;
@@ -843,6 +764,7 @@ function toMyListing(listing: Listing): MyListingDto {
       approxLocation: toLatLng(property.approxLocation),
       landmark: property.landmark,
       listerRelation: property.listerRelation,
+      photos,
     },
     createdAt: listing.createdAt,
     updatedAt: listing.updatedAt,

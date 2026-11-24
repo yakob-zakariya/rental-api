@@ -63,9 +63,12 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
 - [ ] **T3.2 Upload pipeline.** Upload, delete, reorder; type and size checks, at most 12, the
       3-photo floor on delete (P1, P4); re-encoding and removing all metadata (P2); tests,
       including a JPEG with EXIF GPS. Replace `NoPhotosYet` (T2.3) with a count of
-      `property_photos`. Photo changes follow L5 like any field that needs review: +1 `version`;
+      `property_photos`. Built 2026-11-24 (50 MP limit, reordering without review, floor in
+      review/live/stale only); tick once the real phone-photo test runs (the user is sending
+      `test/fixtures/phone-photo-gps.jpg`). Photo changes follow L5 like any field that needs review: +1 `version`;
       a live or stale listing goes back to review, an expired one gets `needs_review`.
-- [ ] **T3.3 Photo hashing.** Choose the library after reading its docs; test it on resized and
+- [ ] **T3.3 Photo hashing.** Adds the `phash` column to `property_photos` (T3.2 created the
+      table without it). Choose the library after reading its docs; test it on resized and
       recompressed copies and on different photos; set `PHOTO_HASH_MAX_DISTANCE` from the results;
       match only other listers' photos (P3); tests.
 

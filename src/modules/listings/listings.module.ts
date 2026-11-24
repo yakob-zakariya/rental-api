@@ -1,25 +1,49 @@
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { MulterModule } from '@nestjs/platform-express';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import type { EnvironmentVariables } from '../../config/env.validation.js';
 import { AreasModule } from '../areas/areas.module.js';
+import { PhotosModule } from '../photos/photos.module.js';
 import { ListingHistory } from './listing-history.entity.js';
 import { Listing } from './listing.entity.js';
 import { ListingsController } from './listings.controller.js';
 import { ListingsService } from './listings.service.js';
-import { NoPhotosYet, PhotoCounter } from './photo-counter.js';
+import { DbPhotoCounter, PhotoCounter } from './photo-counter.js';
 import { Property } from './property.entity.js';
+import {
+  PhotoUploadErrorFilter,
+  PropertyPhotosController,
+} from './property-photos.controller.js';
+import { PropertyPhotosService } from './property-photos.service.js';
 
-/** Properties, listings and their history (spec section 3). */
+/** Properties, listings, their history and their photos (spec sections 3 and 4). */
 @Module({
-  // AreasModule: the service-area check for the pin (G1).
   imports: [
     TypeOrmModule.forFeature([Property, Listing, ListingHistory]),
+    // The service-area check for the pin (G1).
     AreasModule,
+    // Storage, re-encoding and the photo rows (P1, P2).
+    PhotosModule,
+    // Uploads stay in memory (one photo, at most PHOTO_MAX_BYTES), are re-encoded, then stored.
+    // Multer has no size limit of its own, so every limit is set here: one file, no other fields.
+    MulterModule.registerAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService<EnvironmentVariables, true>) => ({
+        limits: {
+          fileSize: config.get('PHOTO_MAX_BYTES', { infer: true }),
+          files: 1,
+          fields: 0,
+        },
+      }),
+    }),
   ],
-  controllers: [ListingsController],
-  // PhotoCounter: no photos until T3.2, so nothing can be submitted outside tests.
+  controllers: [ListingsController, PropertyPhotosController],
   providers: [
     ListingsService,
-    { provide: PhotoCounter, useClass: NoPhotosYet },
+    PropertyPhotosService,
+    PhotoUploadErrorFilter,
+    { provide: PhotoCounter, useClass: DbPhotoCounter },
   ],
   exports: [TypeOrmModule],
 })

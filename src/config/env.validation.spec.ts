@@ -62,6 +62,9 @@ describe('validateEnv', () => {
     expect(env.S3_FORCE_PATH_STYLE).toBe(true);
     expect(env.PHOTO_SIGNED_URL_TTL_SECONDS).toBe(900);
     expect(env.PHOTO_PUBLIC_CACHE_MAX_AGE_SECONDS).toBe(86400);
+    expect(env.PHOTO_MAX_BYTES).toBe(10485760);
+    expect(env.PHOTO_MAX_DIMENSION).toBe(2048);
+    expect(env.PHOTO_MAX_INPUT_PIXELS).toBe(50_000_000);
   });
 
   it('converts numbers and booleans from strings', () => {
@@ -125,6 +128,9 @@ describe('validateEnv', () => {
     ['PHOTO_SIGNED_URL_TTL_SECONDS', '0', 'must be between 1 and 604800'],
     ['PHOTO_SIGNED_URL_TTL_SECONDS', '604801', 'must be between 1 and 604800'],
     ['PHOTO_PUBLIC_CACHE_MAX_AGE_SECONDS', '-1', 'must be 0 or more seconds'],
+    ['PHOTO_MAX_BYTES', '0', 'must be at least 1'],
+    ['PHOTO_MAX_DIMENSION', 'big', 'must be an integer'],
+    ['PHOTO_MAX_INPUT_PIXELS', '0', 'must be at least 1'],
     ['SMS_PROVIDER', 'twilio', 'must be one of console'],
     [
       'DIDIT_BASE_URL',

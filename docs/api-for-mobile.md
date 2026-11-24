@@ -60,10 +60,19 @@ Validation errors also list the fields (values are never echoed back):
 | `INVALID_LISTING_STATE` | 409 | listing edit / delete / submit / withdraw / reopen / close | The listing moved on (for example it was already submitted, or staff decided): refresh "My listings" |
 | `VERIFICATION_REQUIRED` | 403 | submit | Start identity verification first ("Verify your ID to publish"), then submit again |
 | `LISTING_INCOMPLETE` | 400 | submit, reopen, edit | Fields still empty (or an edit that would empty them after submitting): `missing` lists them; jump to the first |
-| `NOT_ENOUGH_PHOTOS` | 400 | submit | "Add at least `min` photos" |
+| `NOT_ENOUGH_PHOTOS` | 400 / 409 | submit, reopen (400); photo delete (409) | "Add at least `min` photos" / "A listing in review or live needs at least `min` photos: add one before deleting" |
 | `RENTED_IN_APP_NEVER_PUBLISHED` | 400 | close | Don't offer "Rented through the app" for a listing that was never live (`publishedAt` empty) |
 | `PROPERTY_HAS_OPEN_LISTING` | 409 | relist | The home already has a listing that isn't closed (`listingId`): open that one instead (fix and resubmit a rejected one, or close it) |
 | `PROPERTY_NOT_FOUND` | 404 | relist | Gone: refresh "My listings" |
+| `PHOTO_REQUIRED` | 400 | photo upload | A bug in the app's request (no `photo` part): log it |
+| `PHOTO_UPLOAD_INVALID` | 400 | photo upload | A bug in the app's request (another field name, or more than one file): log it |
+| `PHOTO_TYPE_NOT_ALLOWED` | 400 | photo upload | "Only JPEG, PNG or WebP photos" |
+| `PHOTO_TOO_MANY_PIXELS` | 400 | photo upload | The app didn't resize first (see "Photos"): resize and retry |
+| `PHOTO_UNREADABLE` | 400 | photo upload | "This photo couldn't be read; try another" |
+| `PHOTO_TOO_LARGE` | 413 | photo upload | Over `max` bytes: the app should have compressed it first; compress and retry |
+| `TOO_MANY_PHOTOS` | 409 | photo upload | "At most `max` photos" |
+| `PHOTO_NOT_FOUND` | 404 | photo delete | Gone (deleted on another device): refresh |
+| `PHOTO_ORDER_MISMATCH` | 400 | photo reorder | The list changed meanwhile: refresh and reorder again |
 | `ACTIVE_LISTING_LIMIT` | 409 | submit | "You already have `max` listings in review or live: close one first" |
 
 ## Sign-in (phone + SMS code)
@@ -243,7 +252,7 @@ English and Amharic, both sorted by English name:
 ## Listings: drafts (the lister)
 
 Signed in (app token). **No verification is needed to make a draft**; it's needed to submit. A draft can be saved half-filled, so the app can save the form step by step.
-Photos come in a later step: they're uploaded to a draft, so create the draft first.
+Photos are uploaded to the listing's property (see "Photos" below), so create the draft first.
 
 ### Fields (`POST /listings` and `PATCH /listings/:id`)
 
@@ -289,7 +298,7 @@ an edit can move a live listing back to review. What an edit does depends on the
 | --- | --- |
 | `draft`, `rejected` | applies; fields may be cleared in a draft only |
 | `pending_review` | applies; it stays in review |
-| `live`, `stale` | `monthlyRentBirr`, `availableFrom`, `negotiable`: apply at once, it stays live. **Any other field (including the pin, and photos once they exist): the listing goes back to `pending_review` and is hidden until staff approve it again** |
+| `live`, `stale` | `monthlyRentBirr`, `availableFrom`, `negotiable`: apply at once, it stays live. **Any other field (including the pin, and adding or deleting a photo; reordering photos doesn't count): the listing goes back to `pending_review` and is hidden until staff approve it again** |
 | `expired` | applies; a field that needs review sets `needsReview` (reopening then goes to review) |
 | `rented`, `removed` | refused (`409 INVALID_LISTING_STATE`): relist instead |
 
@@ -318,8 +327,7 @@ checks, in this order:
 4. fewer than 10 listings already in review, live or stale, else `409 ACTIVE_LISTING_LIMIT` with
    `max`.
 
-Other states: `409 INVALID_LISTING_STATE`. **Until photo upload exists (Phase 2, Step 3) every
-submit stops at check 3.** An available-from date that has passed since it was set doesn't block
+Other states: `409 INVALID_LISTING_STATE`. An available-from date that has passed since it was set doesn't block
 submitting: show a past date as "Available now".
 
 A rejected listing keeps `staffReasonCode` and `listerNote` (the last decision) after it's
@@ -364,6 +372,45 @@ rejected one must be fixed and resubmitted, or closed, first), `409 DRAFT_LISTIN
 Editing the home's details in the new draft changes them for the old listings too (they share
 the home).
 
+### Photos
+
+A listing's photos belong to its property: `property.id` in the listing. 3 to 12 photos; the
+first is the cover.
+
+**Before uploading, the app resizes and compresses every photo** (decided 2026-11-24), to save
+the lister's mobile data: at most **2048 px** on the longest side, as **JPEG, quality about 80**.
+A 12 MP phone photo goes from about 4 MB to about 400 KB. The server re-encodes every photo
+anyway and removes all metadata, GPS included, so the app doesn't need to strip anything; but
+**don't send the original file**: it's slower and costs the user data. Upload one photo per
+request, and show progress per photo.
+
+#### `POST /properties/:id/photos`
+
+`multipart/form-data` with one file in the field **`photo`** (JPEG, PNG or WebP; at most 10 MB and
+50 megapixels). → `201` with the listing; the new photo is last in `property.photos`. On a
+`live` or `stale` listing the listing goes back to review (warn before uploading, as for other
+edits); on an `expired` one, `needsReview` is set.
+
+#### `DELETE /properties/:id/photos/:photoId`
+
+→ `200` with the listing; the photos after it move up. In review, live or stale, a listing keeps
+at least 3: deleting the third-last is `409 NOT_ENOUGH_PHOTOS` (add the new photo first, then
+delete the old one). Live or stale: back to review.
+
+#### `PUT /properties/:id/photos/order`
+
+Body: `{ "photoIds": ["…", "…"] }`, every photo of the property once, in the new order. → `200`
+with the listing. Applies at once, even on a live listing (no review). A list that isn't
+exactly the photos: `400 PHOTO_ORDER_MISMATCH`.
+
+#### In the listing
+
+`property.photos`: `[{ "id", "position", "width", "height", "url" }]`, in order. `url` is a
+**signed link valid for 15 minutes**: show it right away, don't store it; fetch the listing again
+for fresh links (an expired link answers 403).
+
+Photos of a rented or removed listing can't change (`409 INVALID_LISTING_STATE`): relist first.
+
 ### `GET /me/listings`
 
 → `200` with all of your listings in every state, newest first (no paging: a lister has only a
@@ -388,7 +435,10 @@ few).
     "description": "…",
     "location": { "lat": 9.0102, "lng": 38.7606 },
     "approxLocation": { "lat": 9.0121, "lng": 38.7631 },
-    "landmark": null, "listerRelation": "owner"
+    "landmark": null, "listerRelation": "owner",
+    "photos": [
+      { "id": "…", "position": 0, "width": 2048, "height": 1536, "url": "https://…(signed, 15 min)" }
+    ]
   },
   "createdAt": "…", "updatedAt": "…", "submittedAt": null, "publishedAt": null, "closedAt": null
 }

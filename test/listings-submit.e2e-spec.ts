@@ -431,45 +431,4 @@ describe('listings: submit and withdraw (e2e, T2.3)', () => {
   });
 });
 
-describe('listings: submit in the real app before Step 3 (e2e, T2.3)', () => {
-  let app: INestApplication<App>;
-  const sms = new FakeSmsSender();
-
-  beforeAll(async () => {
-    // The real PhotoCounter: no photos exist yet.
-    app = await createTestApp((b) =>
-      b.overrideProvider(SmsSender).useValue(sms),
-    );
-  });
-
-  afterEach(async () => {
-    await resetDatabase(app);
-  });
-
-  afterAll(async () => {
-    await app.close();
-  });
-
-  it('nothing can be submitted: 400 NOT_ENOUGH_PHOTOS (decided 2026-11-23)', async () => {
-    const db = app.get(DataSource);
-    const phone = '+251916100001';
-    const { accessToken } = await signIn(app, sms, phone);
-    await db.query(
-      `UPDATE users SET verification_status = 'approved' WHERE phone = $1`,
-      [phone],
-    );
-    const http = () => request(app.getHttpServer());
-    const { body: listing } = await http()
-      .post('/listings')
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send(fullListing(await boleNeighbourhoodId(db)))
-      .expect(201);
-
-    const { body } = await http()
-      .post(`/listings/${listing.id}/submit`)
-      .set('Authorization', `Bearer ${accessToken}`)
-      .expect(400);
-
-    expect(body).toEqual({ code: 'NOT_ENOUGH_PHOTOS', min: 3 });
-  });
-});
+// Submitting with real photos (2 refused, 3 accepted) is in property-photos.e2e-spec.ts (T3.2).

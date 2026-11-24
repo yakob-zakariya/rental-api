@@ -1,6 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
   ArrayUnique,
   IsArray,
   IsBoolean,
@@ -261,6 +263,33 @@ export class NeighbourhoodRefDto extends AreaRefDto {
   active: boolean;
 }
 
+export class PhotoDto {
+  @ApiProperty({ format: 'uuid' }) id: string;
+  @ApiProperty({ description: 'Display order from 0; 0 is the cover' })
+  position: number;
+  @ApiProperty({ example: 2048 }) width: number;
+  @ApiProperty({ example: 1536 }) height: number;
+  @ApiProperty({
+    description:
+      'A signed link to the stored (re-encoded) photo, valid for 15 minutes: fetch the listing again for fresh links',
+  })
+  url: string;
+}
+
+export class ReorderPhotosDto {
+  @ApiProperty({
+    type: [String],
+    format: 'uuid',
+    description: 'Every photo of the property, each once, in the new order',
+  })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(12)
+  @ArrayUnique()
+  @IsUUID('all', { each: true })
+  photoIds: string[];
+}
+
 /** The lister's own view of the property: everything, including the private fields (G3). */
 export class MyPropertyDto {
   @ApiProperty({ format: 'uuid' }) id: string;
@@ -292,6 +321,8 @@ export class MyPropertyDto {
   @ApiProperty({ type: String, nullable: true }) landmark: string | null;
   @ApiProperty({ enum: ListerRelation, nullable: true })
   listerRelation: ListerRelation | null;
+  @ApiProperty({ type: [PhotoDto], description: 'In display order' })
+  photos: PhotoDto[];
 }
 
 /** A listing as its lister sees it (GET /me/listings, and the answer to every change). */

@@ -1,13 +1,21 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import type { EnvironmentVariables } from '../../config/env.validation.js';
+import { ImageProcessor } from './image-processor.js';
 import { PhotoStorage } from './photo-storage.js';
+import { PropertyPhoto } from './property-photo.entity.js';
 import { createS3Client } from './s3-client.js';
 import { S3PhotoStorage } from './s3-photo-storage.js';
 
-/** Listing photos (spec section 4). T3.1: storage only; upload, re-encoding and hashing follow. */
+/**
+ * Listing photos (spec section 4): storage (T3.1), re-encoding and the photo rows (T3.2). The
+ * endpoints live in the listings module, which owns the listing state the photos affect (L5).
+ */
 @Module({
+  imports: [TypeOrmModule.forFeature([PropertyPhoto])],
   providers: [
+    ImageProcessor,
     {
       provide: PhotoStorage,
       inject: [ConfigService],
@@ -35,6 +43,6 @@ import { S3PhotoStorage } from './s3-photo-storage.js';
       },
     },
   ],
-  exports: [PhotoStorage],
+  exports: [TypeOrmModule, PhotoStorage, ImageProcessor],
 })
 export class PhotosModule {}

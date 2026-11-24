@@ -331,13 +331,33 @@ Any other transition: 409 `INVALID_LISTING_STATE`. **Active** means `pending_rev
   JPEG) and **all metadata is removed**, including EXIF GPS. Only the re-encoded file is stored.
   Reason: listing photos are public, and a GPS tag would reveal the exact location, which stays
   hidden until a contact request is accepted (decided 2026-11-09).
+  - **How (T3.2):** phone photos carry location not only in EXIF GPS but also in XMP, the EXIF
+    thumbnail, extra images (MPF: depth maps, HDR layers) and data after the image (motion-photo
+    videos). Rather than deleting known tags, the photo is decoded to pixels and a new JPEG is
+    written from the pixels alone (sharp; no `keepMetadata`/`keepExif`/`withMetadata`), so no
+    byte of the upload is copied. It is turned upright from its EXIF orientation first, then
+    shrunk (never enlarged) and converted to sRGB.
+  - **Input checks:** the type comes from the content (JPEG, PNG or WebP; otherwise 400
+    `PHOTO_TYPE_NOT_ALLOWED`); only those three decoders may run at all; at most
+    `PHOTO_MAX_INPUT_PIXELS` (50 MP, decided 2026-11-24) before decoding (400
+    `PHOTO_TOO_MANY_PIXELS`, against decompression bombs); strict decoding (400
+    `PHOTO_UNREADABLE`); animated WebP: the first frame only. Over `PHOTO_MAX_BYTES`: 413
+    `PHOTO_TOO_LARGE`.
+  - **Tests:** a real phone photo with GPS, and generated JPEG/PNG/WebP files with metadata in
+    every place above, are uploaded and the stored file is checked byte by byte: no GPS, EXIF,
+    XMP, IPTC, ICC, MPF or other segment, nothing after the end of the image.
+  - Not covered: what the picture itself shows (a street sign, a shop name). That's for the
+    reviewer (R1).
 - **P3** Each stored photo gets a 64-bit perceptual hash, compared with the photos of every
   property **of other listers**. A Hamming distance ≤ `PHOTO_HASH_MAX_DISTANCE` is a match. A
   match never refuses the upload: it is shown to the reviewer (R1). The library is chosen in the
   photo-hash task, after reading its docs and testing it on resized and recompressed copies.
-- **P4** Photo changes follow L5 (for a `live` or `stale` listing they send it back to review).
-  A delete that would leave a submitted listing with fewer than 3 photos is refused (409
-  `NOT_ENOUGH_PHOTOS`).
+- **P4** Photo changes follow L5 (for a `live` or `stale` listing they send it back to review;
+  for an `expired` one they set `needs_review`; rented and removed: 409). **Reordering applies at
+  once, without review** (decided 2026-11-24). A delete that would leave a listing in
+  `pending_review`, `live` or `stale` with fewer than 3 photos is refused (409
+  `NOT_ENOUGH_PHOTOS`); `rejected` and `expired` listings may delete freely, since resubmitting
+  and reopening check for 3 again (decided 2026-11-24).
 - **P5** Photos of a `live` listing are served from public URLs. All other photos are visible only
   to the lister and staff, through short-lived signed links (15 minutes,
   `PHOTO_SIGNED_URL_TTL_SECONDS`).
@@ -507,6 +527,7 @@ PHOTO_SIGNED_URL_TTL_SECONDS=900   # P5: private photos' signed links
 PHOTO_PUBLIC_CACHE_MAX_AGE_SECONDS=86400  # P5: Cache-Control on public photos
 PHOTO_MAX_BYTES=10485760           # 10 MB per upload
 PHOTO_MAX_DIMENSION=2048           # longest side after re-encoding
+PHOTO_MAX_INPUT_PIXELS=50000000    # P2: width × height of an upload (decompression bombs)
 PHOTO_HASH_MAX_DISTANCE=           # Hamming distance for a match; set after testing (P3)
 LISTING_MAX_ACTIVE_PER_USER=10     # L2 hard cap
 MAX_DRAFT_LISTINGS=10              # L1: drafts per user at once
@@ -578,6 +599,9 @@ the local SeaweedFS (its own test buckets) or a fake `PhotoStorage`; tests never
 - **Service area (2026-11-10):** strict, no margin outside the OpenStreetMap boundary. A refused
   pin gets a friendly message in the app and is recorded rounded to about 1 km, with no user
   link. → G1
+- **Photos (2026-11-24):** at most 50 MP per upload; reordering a live listing's photos applies
+  without review; the 3-photo floor on delete applies to `pending_review`, `live` and `stale`
+  only; the app resizes and compresses before uploading (the server still re-encodes). → P2, P4
 - **Close and relist (2026-11-24):** `rented_in_app` only for a listing that was published; a
   rejected listing blocks relisting; relisting copies available-from only if it's today or
   later. Raised for Phase 4: staff can't yet see what a listing looked like when it was live

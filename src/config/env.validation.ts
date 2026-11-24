@@ -286,6 +286,26 @@ export class EnvironmentVariables {
   @Min(0, { message: '$property must be 0 or more seconds' })
   @IsInt({ message: '$property must be an integer' })
   PHOTO_PUBLIC_CACHE_MAX_AGE_SECONDS: number = 86400;
+
+  // --- Photo upload (spec P1, P2; T3.2) ---
+  // Per uploaded file, before re-encoding (P1). Larger: 413, refused while still uploading.
+  @Transform(toNumber)
+  @Min(1, { message: '$property must be at least 1' })
+  @IsInt({ message: '$property must be an integer' })
+  PHOTO_MAX_BYTES: number = 10485760;
+
+  // Longest side of the stored photo, in pixels, after re-encoding (P2). Never enlarged.
+  @Transform(toNumber)
+  @Min(1, { message: '$property must be at least 1' })
+  @IsInt({ message: '$property must be an integer' })
+  PHOTO_MAX_DIMENSION: number = 2048;
+
+  // Width × height of the uploaded image (decided 2026-11-24: 50 MP). A small file can expand to a
+  // huge image (a "decompression bomb"); 200 MP would need about 600 MB to decode.
+  @Transform(toNumber)
+  @Min(1, { message: '$property must be at least 1' })
+  @IsInt({ message: '$property must be an integer' })
+  PHOTO_MAX_INPUT_PIXELS: number = 50_000_000;
 }
 
 // Variables whose .env.example value is a placeholder that production must replace.

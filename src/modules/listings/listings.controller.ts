@@ -24,11 +24,8 @@ import {
   ListingFieldsDto,
   MyListingDto,
 } from './dto/listing.dto.js';
-import {
-  ListingsService,
-  listingNotFound,
-  propertyNotFound,
-} from './listings.service.js';
+import { listingNotFound, propertyNotFound } from './listing-state.js';
+import { ListingsService } from './listings.service.js';
 
 // A malformed id can't name a listing or a property: the same 404 as an unknown one.
 const listingId = new ParseUUIDPipe({ exceptionFactory: listingNotFound });

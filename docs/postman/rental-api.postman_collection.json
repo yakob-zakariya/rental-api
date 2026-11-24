@@ -1387,7 +1387,7 @@
     },
     {
       "name": "8. Listings",
-      "description": "The lister's listings (T2.2–T2.5), with the app token: drafts, submit, withdraw, editing in every state, reopen, close, relist. Review and browsing come later.",
+      "description": "The lister's listings (T2.2–T2.5) and photos (T3.2), with the app token: drafts, photos, submit, withdraw, editing in every state, reopen, close, relist. Review and browsing come later.",
       "item": [
         {
           "name": "Create an empty draft",
@@ -1453,7 +1453,7 @@
                 "listings"
               ]
             },
-            "description": "Run **7. Areas** first: it saves `listingNeighbourhoodId`. `availableFrom` is set to 30 days from now by the pre-request script. 201: `missing: []`, amenities stored as `[\"parking\", \"guard\"]`, the sub-city and neighbourhood named, `approxLocation` 200–400 m from `location`. Saves `listingId`.",
+            "description": "Run **7. Areas** first: it saves `listingNeighbourhoodId`. `availableFrom` is set to 30 days from now by the pre-request script. 201: `missing: []`, amenities stored as `[\"parking\", \"guard\"]`, the sub-city and neighbourhood named, `approxLocation` 200–400 m from `location`. Saves `listingId`. Also saves `listingPropertyId` (for photos and relisting).",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"neighbourhoodId\": \"{{listingNeighbourhoodId}}\",\n  \"type\": \"apartment\",\n  \"bedrooms\": 2,\n  \"bathrooms\": 1,\n  \"furnished\": false,\n  \"separateWaterMeter\": true,\n  \"separateElectricityMeter\": false,\n  \"sizeM2\": 85,\n  \"floor\": 3,\n  \"amenities\": [\"guard\", \"parking\"],\n  \"description\": \"Bright two-bedroom flat, five minutes from the main road.\",\n  \"location\": { \"lat\": 9.0102, \"lng\": 38.7606 },\n  \"landmark\": \"Blue gate behind the pharmacy\",\n  \"listerRelation\": \"owner\",\n  \"monthlyRentBirr\": 25000,\n  \"advanceMonths\": 2,\n  \"negotiable\": true,\n  \"availableFrom\": \"{{availableFrom}}\"\n}",
@@ -1483,7 +1483,8 @@
                 "exec": [
                   "pm.test('status 201', () => pm.response.to.have.status(201));",
                   "pm.test('nothing missing', () => pm.expect(pm.response.json().missing).to.eql([]));",
-                  "if (pm.response.code === 201) pm.environment.set('listingId', pm.response.json().id);"
+                  "if (pm.response.code === 201) pm.environment.set('listingId', pm.response.json().id);",
+                  "if (pm.response.code === 201) pm.environment.set('listingPropertyId', pm.response.json().property.id);"
                 ]
               }
             }
@@ -1743,6 +1744,128 @@
           ]
         },
         {
+          "name": "Upload a photo",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/properties/{{listingPropertyId}}/photos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "{{listingPropertyId}}",
+                "photos"
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "photo",
+                  "type": "file",
+                  "src": [],
+                  "description": "Pick a JPEG, PNG or WebP (Body tab → photo → Select files)"
+                }
+              ]
+            },
+            "description": "One photo per request, multipart field `photo`. Pick the file in the Body tab first. JPEG, PNG or WebP, at most 10 MB and 50 MP; stored as a JPEG of at most 2048 px with **all metadata (GPS included) removed**. 201 with the listing; `property.photos` has signed links (15 minutes). Errors: 400 `PHOTO_REQUIRED` / `PHOTO_TYPE_NOT_ALLOWED` / `PHOTO_TOO_MANY_PIXELS` / `PHOTO_UNREADABLE` / `PHOTO_UPLOAD_INVALID`, 413 `PHOTO_TOO_LARGE`, 409 `TOO_MANY_PHOTOS` (12) / `INVALID_LISTING_STATE`. Saves `photoId`. Needs `listingPropertyId`: **Create a full draft** sets it."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('a known answer', () => pm.expect([201, 400, 404, 409, 413]).to.include(pm.response.code));",
+                  "if (pm.response.code === 201) { const photos = pm.response.json().property.photos; pm.environment.set('photoId', photos[photos.length - 1].id); }",
+                  "else console.log('upload refused:', pm.response.json());"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete a photo",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/properties/{{listingPropertyId}}/photos/{{photoId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "{{listingPropertyId}}",
+                "photos",
+                "{{photoId}}"
+              ]
+            },
+            "description": "200 with the listing; the later photos move up. In review, live or stale with 3 photos: 409 `NOT_ENOUGH_PHOTOS`. On a live listing it goes back to review."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('a known answer', () => pm.expect([200, 404, 409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reorder photos",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/properties/{{listingPropertyId}}/photos/order",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "properties",
+                "{{listingPropertyId}}",
+                "photos",
+                "order"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"photoIds\": [\"<every photo id, in the new order>\"]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Every photo id of the property, each once, in the new order (the first is the cover); else 400 `PHOTO_ORDER_MISMATCH`. Applies at once, even on a live listing (no review)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('a known answer', () => pm.expect([200, 400, 404, 409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Submit for review",
           "request": {
             "method": "POST",
@@ -1758,7 +1881,7 @@
                 "submit"
               ]
             },
-            "description": "Sends a draft (or a rejected listing) to staff review (L2). Checked in order: verified (403 `VERIFICATION_REQUIRED`), complete (400 `LISTING_INCOMPLETE` with `missing`), at least 3 photos (400 `NOT_ENOUGH_PHOTOS`, `min: 3`), under the cap of 10 active listings (409 `ACTIVE_LISTING_LIMIT`). **Until photos exist (Step 3) a verified user's complete draft always gets `NOT_ENOUGH_PHOTOS`.** 200 (once photos exist): `status: pending_review`."
+            "description": "Sends a draft (or a rejected listing) to staff review (L2). Checked in order: verified (403 `VERIFICATION_REQUIRED`), complete (400 `LISTING_INCOMPLETE` with `missing`), at least 3 photos (400 `NOT_ENOUGH_PHOTOS`, `min: 3`), under the cap of 10 active listings (409 `ACTIVE_LISTING_LIMIT`). Upload 3 photos first (**Upload a photo**). 200: `status: pending_review`."
           },
           "response": [],
           "event": [
@@ -1821,7 +1944,7 @@
                 "reopen"
               ]
             },
-            "description": "Expired → `live` (nothing changed that needs review) or `pending_review` (`needsReview`, or never approved). Checks the same things as submit, so **until photos exist (Step 3) it ends in 400 `NOT_ENOUGH_PHOTOS`**. Not expired: 409 `INVALID_LISTING_STATE`. To try it, expire the listing in psql first (manual-testing.md)."
+            "description": "Expired → `live` (nothing changed that needs review) or `pending_review` (`needsReview`, or never approved). Checks the same things as submit (verified, complete, 3 photos, the cap). Not expired: 409 `INVALID_LISTING_STATE`. To try it, expire the listing in psql first (manual-testing.md)."
           },
           "response": [],
           "event": [
