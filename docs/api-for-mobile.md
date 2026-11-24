@@ -494,9 +494,26 @@ now"**, and let them move the pin. Nothing is saved. The server counts refused p
 
 ### `POST /me/devices`
 
-Body: `{ "fcmToken": "<Firebase registration token>", "platform": "android" | "ios" }`. → `201`
-`{ "id": "…" }`. **Call it after every sign-in, on every app start, and whenever Firebase gives a
-new token** (`onTokenRefresh`); the same token again just updates it. Keep the `id`.
+Body: `{ "installationId": "<Firebase Installation ID>", "platform": "android" }`. → `201`
+`{ "id": "…" }`. **Call it after every sign-in, on every app start, and whenever `onRegistered`
+gives an ID**; the same ID again just updates it. Keep the `id`.
+
+**Use Firebase Installation IDs (FIDs), not registration tokens.** Firebase has deprecated
+`getToken()` / `onTokenRefresh` and says not to mix the two, so the app uses only the FID APIs
+(`firebase_messaging` 17.0.0 or later; Android only for now, iOS later):
+
+```xml
+<!-- android/app/src/main/AndroidManifest.xml, inside <application> -->
+<meta-data android:name="firebase_messaging_installation_id_enabled" android:value="true" />
+```
+
+```dart
+// After sign-in and on every start (from the FlutterFire docs; check against the version you use).
+FirebaseMessaging.instance.onRegistered.listen((String installationId) {
+  api.post('/me/devices', {'installationId': installationId, 'platform': 'android'});
+});
+await FirebaseMessaging.instance.register();
+```
 
 - A phone belongs to the sign-in it was registered under: **logging out, or the account being
   signed out everywhere, stops its notices** (the server deletes it). After signing in again,
@@ -509,13 +526,25 @@ new token** (`onTokenRefresh`); the same token again just updates it. Keep the `
 → `204`. Call it on logout, **before** `POST /auth/logout` (the logout deletes it anyway; this
 also covers a logout that fails offline). `404 DEVICE_NOT_FOUND` if it's already gone: ignore it.
 
+### Android setup the app needs
+
+- **The notification permission (Android 13+).** Ask for `POST_NOTIFICATIONS` at a moment that
+  makes sense (e.g. after the first listing is submitted: "We'll tell you when it's approved").
+  Without it, nothing is shown.
+- **The `listings` channel.** Every push in Phase 2 is sent to the Android channel `listings`.
+  Create it on every app start, **before** any push can arrive, with its name in the app's
+  language: "Your listings" / "የእርስዎ ማስታወቂያዎች" (reviewed 2026-11-24). Creating it again with the
+  same id only updates the name, so do it again when the user changes the language. Chat
+  (Phase 3) will get its own channel, `messages`, so users can mute one without the other.
+
 ### What a push contains
 
 A title and a body in the user's language (Amharic, or English; Afaan Oromo users get English for
 now), naming the listing only by property type and neighbourhood, never a phone number, a name
 or a location. The data part is `{ "type": "…", "listingId": "…" }`: open that listing (for the
 lister, their own listing screen). Types in Phase 2: `weekly_check` (open the "still available?"
-answer), `listing_approved`, `listing_rejected`, `listing_taken_down`.
+answer), `listing_approved`, `listing_rejected`, `listing_taken_down`. `test` (from the server's
+`npm run push:send-test`) carries no listing: show it and do nothing on tap.
 
 ## Browse (no account needed)
 

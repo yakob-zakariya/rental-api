@@ -4,14 +4,14 @@ import {
   PushSender,
 } from '../../src/modules/push/push-sender.js';
 
-/** Records pushes; a test can make a token fail or be invalid. */
+/** Records pushes; a test can make an installation fail or be unregistered. */
 export class FakePushSender extends PushSender {
-  sent: { token: string; message: PushMessage }[] = [];
+  sent: { installationId: string; message: PushMessage }[] = [];
   outcomes = new Map<string, PushOutcome>();
 
-  send(fcmToken: string, message: PushMessage): Promise<PushOutcome> {
-    const outcome = this.outcomes.get(fcmToken) ?? 'sent';
-    if (outcome === 'sent') this.sent.push({ token: fcmToken, message });
+  send(installationId: string, message: PushMessage): Promise<PushOutcome> {
+    const outcome = this.outcomes.get(installationId) ?? 'sent';
+    if (outcome === 'sent') this.sent.push({ installationId, message });
     return Promise.resolve(outcome);
   }
 

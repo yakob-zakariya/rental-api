@@ -60,7 +60,7 @@ src/
     admin/           # staff auth, roles, manual review, bans, audit log
     areas/           # Addis Ababa sub-cities and neighbourhoods (seeded), GET /areas, staff management
     photos/          # PhotoStorage (S3-compatible: private + public bucket), upload pipeline
-    push/            # PushSender (console; FCM in T6.2), devices tied to sign-in sessions, push texts (EN/AM)
+    push/            # PushSender (console or FCM by installation ID), devices tied to sign-in sessions, push texts (EN/AM)
     listings/        # properties, listings, listing history (the listing state machine, spec L9)
 test/               # e2e specs; global-setup.ts recreates + migrates rental_test each run
 docs/
@@ -88,6 +88,7 @@ npm run migration:show
 npm run admin:create -- --email <email> [--role super_admin]   # staff account; password prompted (or ADMIN_PASSWORD)
 npm run didit:inspect -- <attempt id | session id> | --latest   # shape of a Didit decision, no personal data
 npm run photos:reconcile   # one public-photo cleanup pass now (the hourly job): removes public copies of photos whose listing isn't live
+npm run push:send-test -- <phone>   # a test push to that user's signed-in phones (uses PUSH_PROVIDER)
 npm run dev:reset-verifications   # DEV ONLY: wipe all verification data, users → not_verified (asks to confirm)
 ```
 

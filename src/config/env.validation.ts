@@ -24,9 +24,10 @@ export enum SmsProvider {
   Console = 'console',
 }
 
-/** Who sends push notifications (spec N1). `fcm` (Firebase Cloud Messaging) comes with T6.2. */
+/** Who sends push notifications (spec N1): `console` only logs; `fcm` is Firebase Cloud Messaging. */
 export enum PushProvider {
   Console = 'console',
+  Fcm = 'fcm',
 }
 
 /** Which Didit environment's webhook events we accept (spec §4 flow step 3). */
@@ -320,8 +321,16 @@ export class EnvironmentVariables {
   SEARCH_MAX_RADIUS_KM: number = 20;
 
   // --- Push (spec N1; T6.1) ---
-  @IsEnum(PushProvider, { message: '$property must be one of console' })
+  @IsEnum(PushProvider, { message: '$property must be one of console, fcm' })
   PUSH_PROVIDER: PushProvider = PushProvider.Console;
+
+  /**
+   * The Firebase service-account JSON (needed with PUSH_PROVIDER=fcm). Its contents are checked
+   * at startup by FcmPushSender. A full admin key for the Firebase project: never committed.
+   */
+  @IsOptional()
+  @IsString()
+  FCM_SERVICE_ACCOUNT_FILE?: string;
 }
 
 // Variables whose .env.example value is a placeholder that production must replace.
@@ -375,6 +384,15 @@ export function validateEnv(
   // P5: public and private photos must never share a bucket.
   if (env.S3_PRIVATE_BUCKET && env.S3_PRIVATE_BUCKET === env.S3_PUBLIC_BUCKET) {
     problems.push('S3_PUBLIC_BUCKET must differ from S3_PRIVATE_BUCKET');
+  }
+
+  if (
+    env.PUSH_PROVIDER === PushProvider.Fcm &&
+    !env.FCM_SERVICE_ACCOUNT_FILE?.trim()
+  ) {
+    problems.push(
+      'FCM_SERVICE_ACCOUNT_FILE is required when PUSH_PROVIDER=fcm',
+    );
   }
 
   if (env.NODE_ENV === NodeEnv.Production) {

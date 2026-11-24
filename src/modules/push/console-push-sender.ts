@@ -5,13 +5,13 @@ import {
   PushSender,
 } from './push-sender.js';
 
-/** Development: logs each push instead of sending it. Never logs a whole token. */
+/** Development: logs each push instead of sending it. Never logs a whole installation ID. */
 export class ConsolePushSender extends PushSender {
   private readonly logger = new Logger('Push');
 
-  send(fcmToken: string, message: PushMessage): Promise<PushOutcome> {
+  send(installationId: string, message: PushMessage): Promise<PushOutcome> {
     this.logger.log(
-      `To …${fcmToken.slice(-6)}: "${message.title}" / "${message.body}" ${JSON.stringify(message.data)}`,
+      `To …${installationId.slice(-6)}: "${message.title}" / "${message.body}" ${JSON.stringify(message.data)}`,
     );
     return Promise.resolve('sent');
   }

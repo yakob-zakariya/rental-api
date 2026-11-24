@@ -313,12 +313,19 @@ what was recorded.
 
 | Try | Expect |
 | --- | --- |
-| `POST /me/devices { "fcmToken": "test-token-1", "platform": "android" }` | 201 `{ id }`; again: the same `id` |
-| Sign in on a second "phone" (another OTP for the same number), register `test-token-2` | two rows in `SELECT fcm_token, session_id FROM devices;`, with different `session_id`s |
-| `POST /auth/logout` with the first sign-in's refresh token | `test-token-1` is gone, `test-token-2` stays |
+| `POST /me/devices { "installationId": "test-fid-1", "platform": "android" }` | 201 `{ id }`; again: the same `id` |
+| Sign in on a second "phone" (another OTP for the same number), register `test-fid-2` | two rows in `SELECT installation_id, session_id FROM devices;`, with different `session_id`s |
+| `POST /auth/logout` with the first sign-in's refresh token | `test-fid-1` is gone, `test-fid-2` stays |
 | Ban the user (staff), or reuse an old refresh token | all their devices are gone |
 | `DELETE /me/devices/<id>` with someone else's id | 404 `DEVICE_NOT_FOUND` |
 | An 11th device | the least recently seen one is replaced |
+| `npm run push:send-test -- 0911234567` (console) | "Sent. Check the phone." and a `[Push] To …` log line |
+
+**On a real phone (`PUSH_PROVIDER=fcm`, after the Firebase setup):** sign in in the app, allow
+notifications, then `npm run push:send-test -- <your phone>`: the phone shows "Test notification"
+(or the Amharic one). Uninstall the app and run it again: the first try may still say sent; once
+Firebase reports the installation gone, the device row is deleted and it says no phone is
+registered.
 
 ## Browse (no token)
 

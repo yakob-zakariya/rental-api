@@ -6,15 +6,22 @@ import {
   PushProvider,
 } from '../../config/env.validation.js';
 import { ConsolePushSender } from './console-push-sender.js';
+import { FcmPushSender } from './fcm-push-sender.js';
 import { Device } from './device.entity.js';
 import { DevicesController, DevicesService } from './devices.js';
 import { PushSender } from './push-sender.js';
 import { PushService } from './push.service.js';
 
-export function createPushSender(provider: PushProvider): PushSender {
+export function createPushSender(
+  provider: PushProvider,
+  serviceAccountFile: string | undefined,
+): PushSender {
   switch (provider) {
     case PushProvider.Console:
       return new ConsolePushSender();
+    case PushProvider.Fcm:
+      // validateEnv already requires the file with fcm; this reads and checks it (startup fails if wrong).
+      return FcmPushSender.fromServiceAccountFile(serviceAccountFile ?? '');
     default: {
       // Adding a provider to the enum without handling it here is a type error.
       const unhandled: never = provider;
@@ -35,7 +42,10 @@ export function createPushSender(provider: PushProvider): PushSender {
       provide: PushSender,
       inject: [ConfigService],
       useFactory: (config: ConfigService<EnvironmentVariables, true>) =>
-        createPushSender(config.get('PUSH_PROVIDER', { infer: true })),
+        createPushSender(
+          config.get('PUSH_PROVIDER', { infer: true }),
+          config.get('FCM_SERVICE_ACCOUNT_FILE', { infer: true }),
+        ),
     },
   ],
   exports: [PushService, PushSender],

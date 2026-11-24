@@ -129,9 +129,15 @@ the perceptual-hash library, `firebase-admin` / FCM HTTP v1.
       were registered under (refresh_tokens.session_id, `sid` in access tokens) and are deleted
       when it ends (logout, revoke-all, ban; expired sessions skipped when sending); 10 per user.
       The Amharic drafts await the user's review.
-- [ ] **T6.2 FCM sender.** Before this task, Claude gives you the exact Firebase setup steps
-      (project, Android and iOS apps, service account) (T-4). Then the FCM implementation,
-      deleting invalid tokens (N2); checked on a real phone.
+- [ ] **T6.2 FCM sender (Android only).** Before this task, Claude gives you the exact Firebase
+      setup steps (project, Android app, service account) (T-4). Then the FCM implementation,
+      deleting invalid tokens (N2); checked on a real phone. Built 2026-11-24: Firebase
+      Installation IDs instead of the deprecated registration tokens, the `listings` channel,
+      `npm run push:send-test`. **Still to do:** the check on a real phone, after your Firebase
+      setup.
+- [ ] **T6.2-iOS (later).** iOS push: needs an Apple developer account, an APNs key uploaded to
+      Firebase, the iOS app added in Firebase, and `FirebaseMessagingInstallationIdEnabled` in the
+      app's Info.plist. The server side should need no change beyond checking it on an iPhone.
 - [ ] **T6.3 Freshness job.** F1–F6: checks, the answer endpoint with closing reasons, stale,
       restore, expiry; tests with the clock moved and the job run twice. Live → stale and stale or
       expired → anything unpublish the photos, and restore → live publishes them, through

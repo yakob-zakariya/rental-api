@@ -31,13 +31,16 @@ import { DevicePlatform } from './device.entity.js';
 export const MAX_DEVICES_PER_USER = 10;
 
 export class RegisterDeviceDto {
-  @ApiProperty({ description: "Firebase's registration token for this phone" })
+  @ApiProperty({
+    description:
+      "This phone app's Firebase Installation ID (FID), from firebase_messaging's onRegistered",
+  })
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
   )
   @IsString()
-  @Length(1, 4096)
-  fcmToken: string;
+  @Length(1, 255)
+  installationId: string;
 
   @ApiProperty({ enum: DevicePlatform })
   @IsEnum(DevicePlatform)
@@ -66,8 +69,8 @@ export class DevicesService {
   constructor(private readonly dataSource: DataSource) {}
 
   /**
-   * Registers this phone under the current sign-in session (N2; decided 2026-11-24). The same token
-   * again updates it; a token registered by another user or session moves here (a shared phone).
+   * Registers this phone under the current sign-in session (N2; decided 2026-11-24). The same FID
+   * again updates it; an FID registered by another user or session moves here (a shared phone).
    * At most 10 per user: the least recently seen goes. Errors: 401 ACCESS_TOKEN_EXPIRED (a token
    * from before sessions had ids: refresh and retry), UNAUTHENTICATED (the session has ended).
    */
@@ -93,13 +96,13 @@ export class DevicesService {
         throw new UnauthorizedException({ code: 'UNAUTHENTICATED' });
 
       const [device] = await manager.query<{ id: string }[]>(
-        `INSERT INTO devices (user_id, session_id, fcm_token, platform, last_seen_at)
+        `INSERT INTO devices (user_id, session_id, installation_id, platform, last_seen_at)
          VALUES ($1, $2, $3, $4, clock_timestamp())
-         ON CONFLICT (fcm_token) DO UPDATE SET user_id = EXCLUDED.user_id,
+         ON CONFLICT (installation_id) DO UPDATE SET user_id = EXCLUDED.user_id,
            session_id = EXCLUDED.session_id, platform = EXCLUDED.platform,
            last_seen_at = EXCLUDED.last_seen_at
          RETURNING id`,
-        [userId, sessionId, body.fcmToken, body.platform],
+        [userId, sessionId, body.installationId, body.platform],
       );
       await manager.query(
         `DELETE FROM devices WHERE id IN (
@@ -128,7 +131,7 @@ export class DevicesService {
 export class DevicesController {
   constructor(private readonly devices: DevicesService) {}
 
-  /** Register this phone (after sign-in, on each app start, and when Firebase gives a new token). */
+  /** Register this phone (after sign-in, on each app start, and whenever onRegistered gives an FID). */
   @Post()
   @ApiCreatedResponse({ type: RegisteredDeviceDto })
   register(

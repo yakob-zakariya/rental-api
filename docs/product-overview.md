@@ -315,8 +315,9 @@ Things that are fine for local development but must be settled before (or when) 
     public photos are cached for up to a day (`PHOTO_PUBLIC_CACHE_MAX_AGE_SECONDS`), so removing
     them from the bucket isn't enough. Needs a Cloudflare API token allowed to purge that zone.
 - **Firebase for production.** A production Firebase project (or the same one, checked), the
-  service-account JSON on the server only, and `PUSH_PROVIDER=fcm` (the app refuses to start in
-  production with `console`).
+  service-account JSON on the server only (`FCM_SERVICE_ACCOUNT_FILE`, readable only by the API),
+  and `PUSH_PROVIDER=fcm` (the app refuses to start in production with `console`). iOS push, if
+  the iOS app launches too: an APNs key in Firebase (task T6.2-iOS).
 - **OpenStreetMap attribution.** The Addis Ababa boundary and the map tiles come from
   OpenStreetMap (ODbL); show the attribution the licence requires ("© OpenStreetMap
   contributors"). The boundary is an unmodified extract (relation 1707699), so the share-alike

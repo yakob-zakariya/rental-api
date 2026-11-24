@@ -106,6 +106,8 @@ Details are in `product-overview.md`.
 ## Open questions
 
 **Chat (Phase 3)**
+- **Note (decided 2026-11-24):** chat pushes use their own Android channel, `messages` (named in
+  the app language), separate from `listings`, so users can mute one without the other.
 - **C1.** What does accepting look like? Can the landlord also decline? Does an unanswered
   request expire, and after how long? Is there a limit on open requests per listing?
 - **C2.** What can be sent: text only, or also photos, voice notes or a location?

@@ -186,7 +186,7 @@ Rows are never changed (a trigger refuses UPDATE); deleting a draft deletes its 
 | id | uuid PK | |
 | user_id | uuid FK → users | |
 | session_id | uuid | the sign-in session it was registered under (T6.1) |
-| fcm_token | varchar(4096) unique | |
+| installation_id | varchar(255) unique | the app's Firebase Installation ID (FID; T6.2) |
 | platform | enum `android`, `ios` | |
 | created_at, last_seen_at | timestamptz | |
 
@@ -491,10 +491,13 @@ Any other transition: 409 `INVALID_LISTING_STATE`. **Active** means `pending_rev
 - **N1** `PushSender` interface, chosen by `PUSH_PROVIDER`: `console` logs messages (development
   and tests), `fcm` sends through Firebase Cloud Messaging (HTTP v1 via `firebase-admin`; read
   the FCM docs before writing it). The app refuses to start in production with `console`.
-- **N2** `POST /me/devices { fcmToken, platform }` registers a token under the current sign-in
-  session (an existing token moves to the current user and session, for a shared phone);
+- **N2** `POST /me/devices { installationId, platform }` registers the app's Firebase
+  Installation ID (FID; Firebase deprecated registration tokens, decided 2026-11-24) under the
+  current sign-in session (an existing FID moves to the current user and session, for a shared
+  phone);
   `DELETE /me/devices/:id` removes one (the app calls it on logout; 404 `DEVICE_NOT_FOUND`).
-  Tokens FCM reports as invalid are deleted. Devices end with their session (section 2), which
+  Installations FCM reports as not registered are deleted (not on `invalid-argument`, which can
+  also mean a bad message). Devices end with their session (section 2), which
   covers logout, revoke-all and the ban. An access token from before sessions had ids gets 401
   `ACCESS_TOKEN_EXPIRED` (refresh and retry); an ended session, 401 `UNAUTHENTICATED`.
 - **N3** Texts are in the user's `preferred_language`: English or Amharic; `om` users get English
@@ -589,7 +592,7 @@ later.
 ## 9. Environment variables (new)
 
 ```
-PUSH_PROVIDER=console              # console | fcm (fcm: T6.2); production refuses console
+PUSH_PROVIDER=console              # console | fcm; production refuses console
 FCM_SERVICE_ACCOUNT_FILE=          # path to the Firebase service-account JSON; never committed
 S3_ENDPOINT=http://localhost:8333  # SeaweedFS in development
 S3_REGION=auto
@@ -623,7 +626,8 @@ SEARCH_MAX_RADIUS_KM=20            # G5
   available?" answers and the three closing reasons, restore, reopen, close, relist.
 - Browse without an account: list and map, filters, near me, listing detail with the
   approximate area as a circle and the lister's name with the verified badge.
-- Push: register the FCM token after login and remove it on logout; tapping a weekly check opens
+- Push: register the Firebase Installation ID after login and remove it on logout; create the
+  `listings` channel (its name in the app language); tapping a weekly check opens
   the answer screen; approve / reject notices open the listing.
 - Every screen in English and Amharic (Claude drafts the Amharic, you review).
 
@@ -675,6 +679,9 @@ the local SeaweedFS (its own test buckets) or a fake `PhotoStorage`; tests never
 - **Service area (2026-11-10):** strict, no margin outside the OpenStreetMap boundary. A refused
   pin gets a friendly message in the app and is recorded rounded to about 1 km, with no user
   link. → G1
+- **FCM (2026-11-24):** Firebase Installation IDs instead of registration tokens; Android only
+  for now (iOS a later task); one Android channel `listings`, named in the app language (chat
+  gets `messages` in Phase 3). → N1, N2
 - **Push devices (2026-11-24):** at most 10 per user; each device belongs to the sign-in session
   it was registered under and is deleted when that session ends; Amharic texts in the polite form
   (እርስዎ). → N2, N3

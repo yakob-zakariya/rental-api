@@ -23,10 +23,10 @@ export enum DevicePlatform {
  * receiving the lister's notices. A session that just expires is caught when sending (PushService).
  */
 @Entity('devices')
-@Unique('UQ_devices_fcm_token', ['fcmToken'])
+@Unique('UQ_devices_installation_id', ['installationId'])
 @Index('IDX_devices_user_id', ['userId'])
 @Index('IDX_devices_session_id', ['sessionId'])
-@Check('CHK_devices_fcm_token', `"fcm_token" ~ '\\S'`)
+@Check('CHK_devices_installation_id', `"installation_id" ~ '\\S'`)
 export class Device {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -45,9 +45,13 @@ export class Device {
   @Column({ name: 'session_id', type: 'uuid' })
   sessionId: string;
 
-  /** Firebase's registration token. Google sets no length; usually about 160 characters. */
-  @Column({ name: 'fcm_token', type: 'varchar', length: 4096 })
-  fcmToken: string;
+  /**
+   * The phone app's Firebase Installation ID (FID), which FCM sends to (T6.2: Firebase deprecated
+   * registration tokens in favour of FIDs). Firebase documents no length; FIDs are short (about 22
+   * characters), so 255 leaves room.
+   */
+  @Column({ name: 'installation_id', type: 'varchar', length: 255 })
+  installationId: string;
 
   @Column({ type: 'enum', enum: DevicePlatform, enumName: 'device_platform' })
   platform: DevicePlatform;

@@ -76,14 +76,19 @@ describe('push: devices and sending (e2e, T6.1)', () => {
   };
   const register = (
     auth: Record<string, string>,
-    fcmToken: string,
+    installationId: string,
     platform = 'android',
-  ) => http().post('/me/devices').set(auth).send({ fcmToken, platform });
+  ) => http().post('/me/devices').set(auth).send({ installationId, platform });
   const devices = (userId?: string) =>
     db.query<
-      { id: string; user_id: string; session_id: string; fcm_token: string }[]
+      {
+        id: string;
+        user_id: string;
+        session_id: string;
+        installation_id: string;
+      }[]
     >(
-      `SELECT id, user_id, session_id, fcm_token FROM devices
+      `SELECT id, user_id, session_id, installation_id FROM devices
        ${userId ? 'WHERE user_id = $1' : ''} ORDER BY created_at`,
       userId ? [userId] : [],
     );
@@ -92,13 +97,13 @@ describe('push: devices and sending (e2e, T6.1)', () => {
     it('registers the phone under the current sign-in session', async () => {
       const s = await session(newPhone());
 
-      const { body } = await register(s.auth, 'token-aaa').expect(201);
+      const { body } = await register(s.auth, 'fid-aaa').expect(201);
 
       const [device] = await devices(s.userId);
       expect(device).toMatchObject({
         id: body.id,
         user_id: s.userId,
-        fcm_token: 'token-aaa',
+        installation_id: 'fid-aaa',
       });
       const [{ session_id }] = await db.query<{ session_id: string }[]>(
         `SELECT session_id FROM refresh_tokens WHERE user_id = $1`,
@@ -107,9 +112,9 @@ describe('push: devices and sending (e2e, T6.1)', () => {
       expect(device.session_id).toBe(session_id);
     });
 
-    it('the same token again: the same device, seen again; the session survives token rotation', async () => {
+    it('the same FID again: the same device, seen again; the session survives token rotation', async () => {
       const s = await session(newPhone());
-      const first = (await register(s.auth, 'token-aaa').expect(201)).body.id;
+      const first = (await register(s.auth, 'fid-aaa').expect(201)).body.id;
       const { body: rotated } = await http()
         .post('/auth/refresh')
         .send({ refreshToken: s.refreshToken })
@@ -118,7 +123,7 @@ describe('push: devices and sending (e2e, T6.1)', () => {
       const again = (
         await register(
           { Authorization: `Bearer ${rotated.accessToken}` },
-          'token-aaa',
+          'fid-aaa',
         ).expect(201)
       ).body.id;
 
@@ -126,7 +131,7 @@ describe('push: devices and sending (e2e, T6.1)', () => {
       expect(await devices(s.userId)).toHaveLength(1);
     });
 
-    it('a token registered by another user moves to the one registering it now (a shared phone)', async () => {
+    it('an FID registered by another user moves to the one registering it now (a shared phone)', async () => {
       const a = await session(newPhone());
       const b = await session(newPhone());
       await register(a.auth, 'shared-phone').expect(201);
@@ -140,25 +145,25 @@ describe('push: devices and sending (e2e, T6.1)', () => {
     it('at most 10 per user (decided 2026-11-24): an 11th replaces the least recently seen', async () => {
       const s = await session(newPhone());
       for (let i = 0; i < 10; i++)
-        await register(s.auth, `token-${i}`).expect(201);
+        await register(s.auth, `fid-${i}`).expect(201);
       await db.query(
-        `UPDATE devices SET last_seen_at = now() - interval '30 days' WHERE fcm_token = 'token-3'`,
+        `UPDATE devices SET last_seen_at = now() - interval '30 days' WHERE installation_id = 'fid-3'`,
       );
 
-      await register(s.auth, 'token-new').expect(201);
+      await register(s.auth, 'fid-new').expect(201);
 
-      const tokens = (await devices(s.userId)).map((d) => d.fcm_token);
-      expect(tokens).toHaveLength(10);
-      expect(tokens).not.toContain('token-3');
-      expect(tokens).toContain('token-new');
+      const ids = (await devices(s.userId)).map((d) => d.installation_id);
+      expect(ids).toHaveLength(10);
+      expect(ids).not.toContain('fid-3');
+      expect(ids).toContain('fid-new');
     });
 
     it.each([
-      ['an empty token', { fcmToken: '  ', platform: 'android' }],
-      ['an unknown platform', { fcmToken: 'x', platform: 'windows' }],
+      ['an empty FID', { installationId: '  ', platform: 'android' }],
+      ['an unknown platform', { installationId: 'x', platform: 'windows' }],
       [
-        'a token over 4096 characters',
-        { fcmToken: 'x'.repeat(4097), platform: 'ios' },
+        'an FID over 255 characters',
+        { installationId: 'x'.repeat(256), platform: 'ios' },
       ],
     ])('refuses %s: 400', async (_name, body) => {
       const s = await session(newPhone());
@@ -175,7 +180,7 @@ describe('push: devices and sending (e2e, T6.1)', () => {
     it('needs a signed-in user', async () => {
       await http()
         .post('/me/devices')
-        .send({ fcmToken: 'x', platform: 'ios' })
+        .send({ installationId: 'x', platform: 'ios' })
         .expect(401);
     });
 
@@ -207,7 +212,7 @@ describe('push: devices and sending (e2e, T6.1)', () => {
         .send({ refreshToken: s.refreshToken })
         .expect(204);
 
-      const { body } = await register(s.auth, 'token-aaa').expect(401);
+      const { body } = await register(s.auth, 'fid-aaa').expect(401);
 
       expect(body.code).toBe('UNAUTHENTICATED');
       expect(await devices(s.userId)).toEqual([]);
@@ -218,8 +223,8 @@ describe('push: devices and sending (e2e, T6.1)', () => {
     it("removes the user's own device; someone else's, an unknown or a malformed id: 404", async () => {
       const a = await session(newPhone());
       const b = await session(newPhone());
-      const mine = (await register(a.auth, 'token-a').expect(201)).body.id;
-      const theirs = (await register(b.auth, 'token-b').expect(201)).body.id;
+      const mine = (await register(a.auth, 'fid-a').expect(201)).body.id;
+      const theirs = (await register(b.auth, 'fid-b').expect(201)).body.id;
 
       await http().delete(`/me/devices/${mine}`).set(a.auth).expect(204);
       for (const id of [
@@ -251,9 +256,9 @@ describe('push: devices and sending (e2e, T6.1)', () => {
         .send({ refreshToken: phoneA.refreshToken })
         .expect(204);
 
-      expect((await devices(phoneA.userId)).map((d) => d.fcm_token)).toEqual([
-        'phone-b',
-      ]);
+      expect(
+        (await devices(phoneA.userId)).map((d) => d.installation_id),
+      ).toEqual(['phone-b']);
     });
 
     it('revoking all sessions (a reused refresh token, A5) deletes every device of the user', async () => {
@@ -326,7 +331,7 @@ describe('push: devices and sending (e2e, T6.1)', () => {
 
       expect(await push.notify(a.userId, NOTICE)).toBe('sent');
 
-      expect(sender.sent.map((s) => s.token).sort()).toEqual([
+      expect(sender.sent.map((s) => s.installationId).sort()).toEqual([
         'phone-a',
         'phone-b',
       ]);
@@ -353,17 +358,17 @@ describe('push: devices and sending (e2e, T6.1)', () => {
       }
     });
 
-    it('a token Firebase reports as invalid is deleted (N2); the others still get it', async () => {
+    it('an installation Firebase no longer knows is deleted (N2); the others still get it', async () => {
       const phone = newPhone();
       const a = await session(phone);
       const b = await session(phone);
       await register(a.auth, 'gone').expect(201);
       await register(b.auth, 'fine').expect(201);
-      sender.outcomes.set('gone', 'invalid_token');
+      sender.outcomes.set('gone', 'unregistered');
 
       expect(await push.notify(a.userId, NOTICE)).toBe('sent');
 
-      expect((await devices(a.userId)).map((d) => d.fcm_token)).toEqual([
+      expect((await devices(a.userId)).map((d) => d.installation_id)).toEqual([
         'fine',
       ]);
     });
@@ -377,6 +382,30 @@ describe('push: devices and sending (e2e, T6.1)', () => {
 
       expect(await push.notify(s.userId, NOTICE)).toBe('failed');
       expect(await devices(s.userId)).toHaveLength(1);
+    });
+  });
+
+  describe('PushService.sendTest (npm run push:send-test; T6.2)', () => {
+    it("sends the test message to the user's live devices, in their language", async () => {
+      const s = await session(newPhone());
+      await register(s.auth, 'phone-a').expect(201);
+      await db.query(
+        `UPDATE users SET preferred_language = 'am' WHERE id = $1`,
+        [s.userId],
+      );
+
+      expect(await push.sendTest(s.userId)).toBe('sent');
+
+      expect(sender.sent).toEqual([
+        {
+          installationId: 'phone-a',
+          message: {
+            title: 'የሙከራ ማሳወቂያ',
+            body: 'ማሳወቂያዎች በዚህ ስልክ ላይ ይሰራሉ።',
+            data: { type: 'test' },
+          },
+        },
+      ]);
     });
   });
 });

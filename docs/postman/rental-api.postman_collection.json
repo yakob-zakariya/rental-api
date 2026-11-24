@@ -357,10 +357,10 @@
                 "devices"
               ]
             },
-            "description": "Registers an FCM token under the current sign-in session (any string works with PUSH_PROVIDER=console). 201 `{ id }`, saved as `deviceId`. The same token again: the same id. Logging out deletes it.",
+            "description": "Registers the app's Firebase Installation ID (FID) under the current sign-in session (any string works with PUSH_PROVIDER=console). 201 `{ id }`, saved as `deviceId`. The same ID again: the same id. Logging out deletes it.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"fcmToken\": \"postman-test-token\",\n  \"platform\": \"android\"\n}",
+              "raw": "{\n  \"installationId\": \"postman-test-fid\",\n  \"platform\": \"android\"\n}",
               "options": {
                 "raw": {
                   "language": "json"

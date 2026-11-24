@@ -134,7 +134,7 @@ describe('validateEnv', () => {
     ['PHOTO_MAX_DIMENSION', 'big', 'must be an integer'],
     ['PHOTO_MAX_INPUT_PIXELS', '0', 'must be at least 1'],
     ['SEARCH_MAX_RADIUS_KM', '0', 'must be at least 1'],
-    ['PUSH_PROVIDER', 'apns', 'must be one of console'],
+    ['PUSH_PROVIDER', 'apns', 'must be one of console, fcm'],
     ['SMS_PROVIDER', 'twilio', 'must be one of console'],
     [
       'DIDIT_BASE_URL',
@@ -205,6 +205,19 @@ describe('validateEnv', () => {
       expect(errorOf({ ...validEnv(), NODE_ENV: 'production' })).toContain(
         "SMS_PROVIDER=console logs OTP codes and can't be used in production",
       );
+    });
+
+    it('fcm needs the service-account file', () => {
+      expect(errorOf({ ...validEnv(), PUSH_PROVIDER: 'fcm' })).toContain(
+        'FCM_SERVICE_ACCOUNT_FILE is required when PUSH_PROVIDER=fcm',
+      );
+      expect(() =>
+        validateEnv({
+          ...validEnv(),
+          PUSH_PROVIDER: 'fcm',
+          FCM_SERVICE_ACCOUNT_FILE: '/secrets/firebase.json',
+        }),
+      ).not.toThrow();
     });
 
     it('the console push sender is rejected in production too (N1)', () => {

@@ -29,7 +29,8 @@
     "admin:create": "npm run build && node dist/cli/create-admin.js",
     "dev:reset-verifications": "npm run build && node dist/cli/reset-verifications.js",
     "didit:inspect": "npm run build && node dist/cli/inspect-decision.js",
-    "photos:reconcile": "npm run build && node dist/cli/reconcile-photos.js"
+    "photos:reconcile": "npm run build && node dist/cli/reconcile-photos.js",
+    "push:send-test": "npm run build && node dist/cli/send-test-push.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1176.0",
@@ -47,6 +48,7 @@
     "@node-rs/argon2": "^2.2.2",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
+    "firebase-admin": "14.5.1",
     "ioredis": "^5.11.1",
     "pg": "^8.23.1",
     "reflect-metadata": "^0.2.2",

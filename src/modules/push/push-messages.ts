@@ -111,6 +111,21 @@ const TEXTS: Record<PushNotice['kind'], Record<Language, Texts>> = {
   },
 };
 
+/** `npm run push:send-test`: checks a phone receives pushes. The app ignores `type: test`. */
+export function testPushMessage(preferredLanguage: UserLanguage): PushMessage {
+  return preferredLanguage === UserLanguage.Amharic
+    ? {
+        title: 'የሙከራ ማሳወቂያ',
+        body: 'ማሳወቂያዎች በዚህ ስልክ ላይ ይሰራሉ።',
+        data: { type: 'test' },
+      }
+    : {
+        title: 'Test notification',
+        body: 'Notifications work on this phone.',
+        data: { type: 'test' },
+      };
+}
+
 /** The push for a notice, in the user's language (Afaan Oromo: English for now). */
 export function pushMessage(
   notice: PushNotice,
